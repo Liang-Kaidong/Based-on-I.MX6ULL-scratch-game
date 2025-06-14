@@ -1,3 +1,13 @@
+/*************************************************************************************************************
+File name: p.c
+Author: KD
+Version: V_1.0
+Build date: 2024-06-14
+Description: NONE
+Others:Usage requires preservation of original author attribution.
+Log:1.First create file.
+*************************************************************************************************************/
+
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/stat.h>
