@@ -29,6 +29,7 @@ UserInfo user_info = {{0}, {0}}; // 初始化用户信息结构体
 int main();
 void input_account_box();
 void input_password_box();
+void login_fun();
 
 /* 解码 UTF-8 字符，返回字符的字节长度 */ 
 int decode_utf8(const char *str, int *codepoint) {   
@@ -843,46 +844,68 @@ void input_password_box() {
                 if ((input_x >= 800 && input_x <= 900 && input_y >= 51 && input_y <= 111) ||
                     (input_x >= 876 && input_x <= 1024 && input_y >= 400 && input_y <= 600)) {
                     // 处理确认按钮点击事件
-                    if (strlen(user_info.account_number_buf) && strlen(user_info.password_number_buf) != 0) {
-                        show_bmp_to_lcd("login_2.bmp");    //测试debug
-                        /* 账号输入文本框 */
-                        lcd_render_text_with_box(
-                            user_info.account_number_buf,      /* 文本内容 */
-                            104, 248,                /* 起始坐标 (x, y) */
-                            COLOR_BLACK,             /* 文本颜色 */
-                            COLOR_WHITE,             /* 文本框背景颜色 */   
-                            0,                       /* 文本与文本框边缘的间距 */
-                            BOX_STYLE_RECTANGLE,     /* 矩形样式 */
-                            0,                       /* 矩形样式不需要半径 */
-                            50,                      /* 字体大小 */
-                            386,                     /* 文本框宽度 */
-                            50                       /* 文本框高度 */
-                        );
-                        /* 密码输入文本框 */
-                        lcd_render_text_with_box(
-                            user_info.password_number_buf,      /* 文本内容 */
-                            104, 310,                /* 起始坐标 (x, y) */
-                            COLOR_BLACK,             /* 文本颜色 */  
-                            COLOR_WHITE,             /* 文本框背景颜色 */
-                            0,                       /* 文本与文本框边缘的间距 */
-                            BOX_STYLE_RECTANGLE,     /* 矩形样式 */
-                            0,                       /* 矩形样式不需要半径 */
-                            50,                      /* 字体大小 */
-                            386,                       /* 文本框宽度 */
-                            50                        /* 文本框高度 */
-                        );
+                    show_bmp_to_lcd("login_2.bmp");    //测试debug
+                    /* 账号输入文本框 */
+                    lcd_render_text_with_box(
+                        user_info.account_number_buf,      /* 文本内容 */
+                        104, 248,                /* 起始坐标 (x, y) */
+                        COLOR_BLACK,             /* 文本颜色 */
+                        COLOR_WHITE,             /* 文本框背景颜色 */   
+                        0,                       /* 文本与文本框边缘的间距 */
+                        BOX_STYLE_RECTANGLE,     /* 矩形样式 */
+                        0,                       /* 矩形样式不需要半径 */
+                        50,                      /* 字体大小 */
+                        386,                     /* 文本框宽度 */
+                        50                       /* 文本框高度 */
+                    );
+                    /* 密码输入文本框 */
+                    lcd_render_text_with_box(
+                        user_info.password_number_buf,      /* 文本内容 */
+                        104, 310,                /* 起始坐标 (x, y) */
+                        COLOR_BLACK,             /* 文本颜色 */  
+                        COLOR_WHITE,             /* 文本框背景颜色 */
+                        0,                       /* 文本与文本框边缘的间距 */
+                        BOX_STYLE_RECTANGLE,     /* 矩形样式 */
+                        0,                       /* 矩形样式不需要半径 */
+                        50,                      /* 字体大小 */
+                        386,                       /* 文本框宽度 */
+                        50                        /* 文本框高度 */
+                    );
+                    /* 登录按钮区域判定 */
+                    while (2) {
                         ts_fun();
+                        /* 点击到登录按钮 */
                         if (input_x >= 104 && input_x <= 204 && input_y >= 431 && input_y <= 479) {
+                            if (strlen(user_info.account_number_buf) != 0 && strlen(user_info.password_number_buf) != 0) {
+                                show_bmp_to_lcd("1.bmp");    //测试debug
+                                printf("login sucessful.\n");
+                            } else if (strlen(user_info.account_number_buf) == 0 && strlen(user_info.password_number_buf) == 0) {
+                                lcd_render_text_with_box(
+                                    "账号或密码为空，请重新登录",     /* 文本内容 */
+                                    350, 400,                       /* 起始坐标 (x, y) */
+                                    COLOR_WHITE,                    /* 文本颜色 */
+                                    COLOR_LIGHTGRAY,                /* 文本框背景颜色 */
+                                    10,                             /* 文本与文本框边缘的间距 */
+                                    BOX_STYLE_ROUNDED,              /* 圆角样式 */
+                                    15,                             /* 圆角半径 */
+                                    30,                             /* 字体大小 */
+                                    0,                              /* 文本框宽度 */
+                                    0                               /* 文本框高度 */
+                                );
+                                sleep(3);
+                                show_bmp_to_lcd("login_1.bmp"); 
+                                login_fun();   
+                            } else if (strlen(user_info.account_number_buf) != 0 && strlen(user_info.password_number_buf) != 0) {
+                                printf("账号密码正确，登录成功！\n");
+                            }
                             show_bmp_to_lcd("1.bmp");    //测试debug
                             printf("login sucessful.\n");
+                        } 
+                        /* 未点击到登录按钮，继续循环 */  
+                        else {
+                            continue;
                         }
-                    } else if (strlen(user_info.account_number_buf) == 0) {
-                        printf("no acconut.\n");
-                    } else if (strlen(user_info.password_number_buf) == 0) {
-                        printf("no password.\n"); 
-                    } else {
-                        printf("no account and password.\n");
-                    }
+                    } 
                     break;
                 }
                 ts_fun();   //debug
@@ -1196,9 +1219,8 @@ void login_fun() {
                 } else if (input_x >= 104 && input_x <= 290 && input_y >= 310 && input_y <= 400) {
                     input_password_box();
                 } else {
-                    while (2);
+                    account_password_background_box();
                 }
-                break;
             }
             break;
         }
