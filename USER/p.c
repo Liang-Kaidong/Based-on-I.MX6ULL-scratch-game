@@ -1274,7 +1274,6 @@ void login_fun() {
                 ts_fun();
                 if (input_x >= 313 && input_x <= 497 && input_y >= 363 && input_y <= 447) {
                     home_fun();
-                    login_fun();    //重调用登陆界面
                 } else if (input_x >= 534 && input_x <= 714 && input_y >= 363 && input_y <= 447) {
                     show_bmp_to_lcd("login_1.bmp"); //  刷新屏幕
                     login_fun();
@@ -1287,6 +1286,11 @@ void login_fun() {
             * 直到点到账号或密码文本框为止 
             */
         }
+        /* 
+        * 此处写break是因为当继续停留在login_fun()函数时，
+        * 若成功进入游戏会陷进这里的死循环
+        */
+        break;  
     }
 }
 
