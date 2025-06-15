@@ -1,3 +1,17 @@
+/*************************************************************************************************************
+File name: p.c
+Author: KD
+Version: V_1.1
+Build date: 2024-06-15
+Description: NONE
+Others: Usage requires preservation of original author attribution.
+Log: 1.修复了登录的逻辑错误
+     2.优化了登录界面的显示
+     3.新增游戏主界面（待完善）
+bug: 1.账号与密码输入界面未添加相关的屏幕提示信息
+     2.仍存在部分死循环
+*************************************************************************************************************/
+
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -441,15 +455,7 @@ void input_account_box() {
                         COLOR_LIGHTGRAY,                    /* 文本颜色 */
                         25                                  /* 字体大小 */
                     );
-
-                    ts_fun();
-                    if (input_x >= 104 && input_x <= 248 && input_y >= 310 && input_y <= 400) {
-                        input_password_box();
-                        break;  // 退出循环
-                    } else {
-                        break;
-                    }
-                    break;
+                    break;  //debug
                 }
                 ts_fun();   //debug
                 // 处理键盘点击事件
@@ -718,6 +724,18 @@ void input_account_box() {
         }
     }
 
+    while (2) {
+        ts_fun();
+        if (input_x >= 104 && input_x <= 248 && input_y >= 310 && input_y <= 400) {
+            input_password_box();
+            break;
+        } else if (input_x >= 104 && input_x <= 248 && input_y >= 400 && input_y <= 500) {
+            printf("未输入密码，无法登录\n");
+        } else {
+            continue;
+        }
+    }
+
     // 恢复标准输入的缓冲
     system("stty icanon");
 
@@ -871,42 +889,7 @@ void input_password_box() {
                         386,                       /* 文本框宽度 */
                         50                        /* 文本框高度 */
                     );
-                    /* 登录按钮区域判定 */
-                    while (2) {
-                        ts_fun();
-                        /* 点击到登录按钮 */
-                        if (input_x >= 104 && input_x <= 204 && input_y >= 431 && input_y <= 479) {
-                            if (strlen(user_info.account_number_buf) != 0 && strlen(user_info.password_number_buf) != 0) {
-                                show_bmp_to_lcd("1.bmp");    //测试debug
-                                printf("login sucessful.\n");
-                            } else if (strlen(user_info.account_number_buf) == 0 && strlen(user_info.password_number_buf) == 0) {
-                                lcd_render_text_with_box(
-                                    "账号或密码为空，请重新登录",     /* 文本内容 */
-                                    350, 400,                       /* 起始坐标 (x, y) */
-                                    COLOR_WHITE,                    /* 文本颜色 */
-                                    COLOR_LIGHTGRAY,                /* 文本框背景颜色 */
-                                    10,                             /* 文本与文本框边缘的间距 */
-                                    BOX_STYLE_ROUNDED,              /* 圆角样式 */
-                                    15,                             /* 圆角半径 */
-                                    30,                             /* 字体大小 */
-                                    0,                              /* 文本框宽度 */
-                                    0                               /* 文本框高度 */
-                                );
-                                sleep(3);
-                                show_bmp_to_lcd("login_1.bmp"); 
-                                login_fun();   
-                            } else if (strlen(user_info.account_number_buf) != 0 && strlen(user_info.password_number_buf) != 0) {
-                                printf("账号密码正确，登录成功！\n");
-                            }
-                            show_bmp_to_lcd("1.bmp");    //测试debug
-                            printf("login sucessful.\n");
-                        } 
-                        /* 未点击到登录按钮，继续循环 */  
-                        else {
-                            continue;
-                        }
-                    } 
-                    break;
+                    break;  /* 不再刷新，结束死循环 */
                 }
                 ts_fun();   //debug
                 // 处理键盘点击事件
@@ -1174,6 +1157,44 @@ void input_password_box() {
         }
     }
 
+    while (2) {
+        /* 登录按钮区域判定 */
+        ts_fun();
+        /* 点击到登录按钮 */
+        if (input_x >= 104 && input_x <= 204 && input_y >= 431 && input_y <= 479) {
+            if (strlen(user_info.account_number_buf) != 0 && strlen(user_info.password_number_buf) != 0) {
+                show_bmp_to_lcd("1.bmp");    //测试debug
+                printf("login sucessful.\n");
+                break;
+            } else if (strlen(user_info.account_number_buf) == 0 && strlen(user_info.password_number_buf) == 0) {
+                lcd_render_text_with_box(
+                    "账号或密码为空，请重新登录",     /* 文本内容 */
+                    350, 400,                       /* 起始坐标 (x, y) */
+                    COLOR_WHITE,                    /* 文本颜色 */
+                    COLOR_LIGHTGRAY,                /* 文本框背景颜色 */
+                    10,                             /* 文本与文本框边缘的间距 */
+                    BOX_STYLE_ROUNDED,              /* 圆角样式 */
+                    15,                             /* 圆角半径 */
+                    30,                             /* 字体大小 */
+                    0,                              /* 文本框宽度 */
+                    0                               /* 文本框高度 */
+                );
+                sleep(3);
+                show_bmp_to_lcd("login_2.bmp"); 
+                /* 返回上一层 */ 
+                account_password_background_box();
+                break;  
+            } else if (strlen(user_info.account_number_buf) != 0 && strlen(user_info.password_number_buf) != 0) {
+                printf("账号密码正确，登录成功！\n");
+            } 
+            //show_bmp_to_lcd("1.bmp");    //测试debug
+            printf("login sucessful.\n");
+        } else {    /* 未点击到登录按钮，继续循环 */
+            continue;
+        }
+        break;
+    }
+
     // 恢复标准输入的缓冲
     system("stty icanon");
 
@@ -1218,35 +1239,65 @@ void login_fun() {
                     input_account_box();
                 } else if (input_x >= 104 && input_x <= 290 && input_y >= 310 && input_y <= 400) {
                     input_password_box();
+                } else if (input_x >= 104 && input_x <= 290 && input_y >= 400 && input_y <= 490) {      
+                    /* 
+                    * 首次无账号密码就登陆
+                    * 首次登陆账号与密码必为空值
+                    */
+                    lcd_render_text_with_box(
+                        "账号或密码为空，禁止登陆",
+                        350, 400,
+                        COLOR_WHITE,
+                        COLOR_LIGHTGRAY,
+                        10,
+                        BOX_STYLE_ROUNDED,
+                        15,
+                        30,
+                        0,
+                        0
+                    );
+                    //printf("禁止登陆");   //debug
+                    sleep(2);
+                    /* 刷新文本框 */
+                    show_bmp_to_lcd("login_2.bmp");
+                    account_password_background_box();  
+                    continue;   /* 继续循环 */
                 } else {
-                    account_password_background_box();
+                    continue;   /* 继续循环 */
                 }
+                break;  /* 一定要写，不然会死循环 */
             }
-            break;
-        }
-        if (input_x >= 942 && input_x <= 1024 && input_y >= 524 && input_y <= 600) {
+            break;  /* 已经判定成功了，无需执行下一步 */
+        } else if (input_x >= 942 && input_x <= 1024 && input_y >= 524 && input_y <= 600) {
             show_bmp_to_lcd("login_exit.bmp");
             while(2) {
                 ts_fun();
                 if (input_x >= 313 && input_x <= 497 && input_y >= 363 && input_y <= 447) {
                     home_fun();
                     login_fun();    //重调用登陆界面
-                    break;
                 } else if (input_x >= 534 && input_x <= 714 && input_y >= 363 && input_y <= 447) {
                     show_bmp_to_lcd("login_1.bmp"); //  刷新屏幕
                     login_fun();
-                    break;
                 }
+                break;
             }
-            break;
+            /* 
+            * 不能提前结束循环，
+            * 需继续判定，
+            * 直到点到账号或密码文本框为止 
+            */
         }
     }
-    return;
+}
+
+void game_start_home() {
+    show_bmp_to_lcd("1.bmp");
 }
 
 int main() {
     home_fun();
     login_fun();
     //notification();
+    game_start_home();
     return 0;
 }
