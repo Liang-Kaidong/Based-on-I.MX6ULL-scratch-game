@@ -5,7 +5,7 @@ Version: V_1.1
 Build date: 2024-06-15
 Description: NONE
 Others: Usage requires preservation of original author attribution.
-Log: 1.修复了部分登录界面的部分逻辑错误
+Log: 1.修复了登录的逻辑错误
      2.优化了登录界面的显示
      3.新增游戏主界面（待完善）
 bug: 1.账号与密码输入界面未添加相关的屏幕提示信息
