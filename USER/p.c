@@ -1,15 +1,21 @@
 /*************************************************************************************************************
 File name: p.c
 Author: KD
-Version: V_1.1
-Build date: 2024-06-15
+Version: V_2.0
+Build date: 2024-06-29
 Description: NONE
 Others: Usage requires preservation of original author attribution.
-Log: 1.修复了登录的逻辑错误
-     2.优化了登录界面的显示
-     3.新增游戏主界面（待完善）
-bug: 1.账号与密码输入界面未添加相关的屏幕提示信息
-     2.仍存在部分死循环
+Log: 1.优化登录界面逻辑
+     2.优化登录界面的显示，无账号密码时提示输入
+     3.新增输入完账号或密码后，在登陆界面或注册界面点击另一个文本框可快速切换输入账号或密码
+     4.新增账号登录判断逻辑部分
+     5.新增账号注册界面
+     6.新增账号注册判断逻辑部分
+     7.修复因未及时跳出循环时导致的逻辑错误
+     8.修复空账号或空密码能够实现登录的问题
+     9.修复修复空账号或空密码能够实现注册的问题
+bug: 1.账号登陆与注册判断逻辑部分缺乏屏幕提示
+     2.账号注册页面暂时未实现账号注册，在下一个版本更进更新
 *************************************************************************************************************/
 
 #include <stdio.h>
@@ -33,20 +39,27 @@ int m = 0;    /* 判断变量m */
 bool confirm_clicked = false;  /* 确认键是否被点击的标志 */
 
 // 定义包含账号和密码数组的结构体
-typedef struct {
+typedef struct 
+{
     char account_number_buf[128];   /* 用于存储账号的数组 */
     char password_number_buf[128];  /* 用于存储密码的数组 */
 } UserInfo;
 UserInfo user_info = {{0}, {0}}; // 初始化用户信息结构体 
 
-/* 向前声明 main 函数 */ 
-int main();
+/* 全局向前声明各函数 */ 
 void input_account_box();
 void input_password_box();
+void register_account_box();
+void register_password_box();
 void login_fun();
+void login_boot();
+void login_judgment();
+void register_judgment();
+void game_start_home();
 
 /* 解码 UTF-8 字符，返回字符的字节长度 */ 
-int decode_utf8(const char *str, int *codepoint) {   
+int decode_utf8(const char *str, int *codepoint) 
+{   
     unsigned char c = (unsigned char)*str;  /* c：用于存储当前字符的第一个字节 */
     int len = 1;    /* len：用于存储当前字符的字节长度，初始化为 1，因为单字节 UTF-8 字符占用 1 个字节 */
     
@@ -101,7 +114,8 @@ void ts_fun()
 }
 
 /* 未点击到游戏文本提示 */
-void not_open_game_notification() {
+void not_open_game_notification() 
+{
     /* 初始化字库 */
     if (lcd_init("/dev/fb0", "simkai.ttf")!= 0) {
         printf("初始化失败。\n");
@@ -126,7 +140,9 @@ void not_open_game_notification() {
     lcd_cleanup();
 }
 
-void keyboard() {
+/* 调用虚拟键盘 */
+void keyboard() 
+{
     if (lcd_init("/dev/fb0", "simkai.ttf") != 0) {
         printf("初始化失败。\n");
     }
@@ -171,7 +187,8 @@ void keyboard() {
 }
 
 /* 账号与密码提示文本渲染 */
-void account_password_background_box() {
+void account_password_background_box() 
+{
     /* 初始化字库 */
     if (lcd_init("/dev/fb0", "simkai.ttf")!= 0) {
         printf("初始化失败。\n");
@@ -186,7 +203,46 @@ void account_password_background_box() {
         COLOR_WHITE     /* 填充颜色 */
     );
     lcd_render_text(
-        "请输入账号（可用中文）",             /* 文本内容 */
+        "请输入账号",                       /* 文本内容 */
+        104, 260,                           /* 起始坐标 (x, y) */
+        COLOR_LIGHTGRAY,                    /* 文本颜色 */
+        25                                  /* 字体大小 */
+    );
+    /* 密码背景文本框 */
+    lcd_draw_filled_rectangle(
+        104, 310,       /* 左上角坐标 (x, y) */
+        386, 50,        /* 矩形宽度和高度 */
+        COLOR_WHITE     /* 填充颜色 */
+    );
+    lcd_render_text(
+        "请输入密码",            /* 文本内容 */
+        104, 323,                           /* 起始坐标 (x, y) */
+        COLOR_LIGHTGRAY,                    /* 文本颜色 */
+        25                                  /* 字体大小 */
+    );
+
+    /* 清理资源 */
+    //lcd_cleanup();    /* 请不要启用，会导致输入开始时无效，并且会导致多种问题，建议后来者覆盖 */
+}
+
+/* 注册界面渲染 */
+void register_background_box()
+{
+    /* 初始化字库 */
+    if (lcd_init("/dev/fb0", "simkai.ttf")!= 0) {
+        printf("初始化失败。\n");
+        return;
+    }
+
+    /* 绘制账号与密码背景文本框 */
+    /* 账号背景文本框 */
+    lcd_draw_filled_rectangle(
+        104, 248,       /* 左上角坐标 (x, y) */
+        386, 50,        /* 矩形宽度和高度 */
+        COLOR_WHITE     /* 填充颜色 */
+    );
+    lcd_render_text(
+        "请输入要注册的账号",             /* 文本内容 */
         104, 260,                           /* 起始坐标 (x, y) */
         COLOR_LIGHTGRAY,                    /* 文本颜色 */
         25                                  /* 字体大小 */
@@ -208,9 +264,9 @@ void account_password_background_box() {
     //lcd_cleanup();    /* 请不要启用，会导致输入开始时无效，并且会导致多种问题，建议后来者覆盖 */
 }
 
-
 /* 账号输入界面刷新线程函数 */
-void* account_input_refresh(void* arg) {
+void* account_input_refresh(void* arg) 
+{
     while (!confirm_clicked) {
         /* 初始化字库 */
         if (lcd_init("/dev/fb0", "simkai.ttf") != 0) {
@@ -261,7 +317,8 @@ void* account_input_refresh(void* arg) {
 }
 
 /* 密码输入界面刷新线程函数 */
-void* password_input_refresh(void* arg) {
+void* password_input_refresh(void* arg) 
+{
     while (!confirm_clicked) {
         /* 初始化字库 */
         if (lcd_init("/dev/fb0", "simkai.ttf") != 0) {
@@ -312,7 +369,8 @@ void* password_input_refresh(void* arg) {
 }
 
 /* 账号输入实现 */
-void input_account_box() {
+void input_account_box() 
+{
     /* 初始化字库 */
     if (lcd_init("/dev/fb0", "simkai.ttf") != 0) {
         printf("初始化失败。\n");
@@ -428,33 +486,65 @@ void input_account_box() {
                 // 判断是否点击了确认按钮
                 if ((input_x >= 800 && input_x <= 900 && input_y >= 51 && input_y <= 111) || 
                     (input_x >= 876 && input_x <= 1024 && input_y >= 400 && input_y <= 600)) {  /* 确认按钮和确认键 */
-                    // 处理确认按钮点击事件
+                    /* 处理确认按钮点击事件 */ 
                     show_bmp_to_lcd("login_2.bmp");    /* 加载背景图层 */
-                    /* 账号输入文本框 */ 
-                    lcd_render_text_with_box(
-                        user_info.account_number_buf,      /* 文本内容 */
-                        104, 248,                /* 起始坐标 (x, y) */
-                        COLOR_BLACK,             /* 文本颜色 */ 
-                        COLOR_WHITE,             /* 文本框背景颜色 */ 
-                        0,                       /* 文本与文本框边缘的间距 */ 
-                        BOX_STYLE_RECTANGLE,     /* 矩形样式 */ 
-                        0,                       /* 矩形样式不需要半径 */
-                        50,                      /* 字体大小 */
-                        386,                     /* 文本框宽度 */
-                        50                       /* 文本框高度 */
-                    );  
-                    /* 密码背景文本框 */
-                    lcd_draw_filled_rectangle(
-                        104, 310,       /* 左上角坐标 (x, y) */
-                        386, 50,        /* 矩形宽度和高度 */
-                        COLOR_WHITE     /* 填充颜色 */
-                    );
-                    lcd_render_text(
-                        "请输入不少于8位数的密码",            /* 文本内容 */
-                        104, 323,                           /* 起始坐标 (x, y) */
-                        COLOR_LIGHTGRAY,                    /* 文本颜色 */
-                        25                                  /* 字体大小 */
-                    );
+                    if (strlen(user_info.account_number_buf) == 0) {
+                        /* 账号背景文本框 */
+                        lcd_draw_filled_rectangle(
+                            104, 248,       /* 左上角坐标 (x, y) */
+                            386, 50,        /* 矩形宽度和高度 */
+                            COLOR_WHITE     /* 填充颜色 */
+                        );
+                        lcd_render_text(
+                            "请输入账号",                       /* 文本内容 */
+                            104, 260,                           /* 起始坐标 (x, y) */
+                            COLOR_LIGHTGRAY,                    /* 文本颜色 */
+                            25                                  /* 字体大小 */
+                        );            
+                    } else {
+                        /* 账号输入文本框 */ 
+                        lcd_render_text_with_box(
+                            user_info.account_number_buf,      /* 文本内容 */
+                            104, 248,                /* 起始坐标 (x, y) */
+                            COLOR_BLACK,             /* 文本颜色 */ 
+                            COLOR_WHITE,             /* 文本框背景颜色 */ 
+                            0,                       /* 文本与文本框边缘的间距 */ 
+                            BOX_STYLE_RECTANGLE,     /* 矩形样式 */ 
+                            0,                       /* 矩形样式不需要半径 */
+                            50,                      /* 字体大小 */
+                            386,                     /* 文本框宽度 */
+                            50                       /* 文本框高度 */
+                        );  
+                    }
+
+                    if (strlen(user_info.password_number_buf) == 0) {
+                        /* 密码背景文本框 */
+                        lcd_draw_filled_rectangle(
+                            104, 310,       /* 左上角坐标 (x, y) */
+                            386, 50,        /* 矩形宽度和高度 */
+                            COLOR_WHITE     /* 填充颜色 */
+                        );
+                        lcd_render_text(
+                            "请输入密码",                       /* 文本内容 */
+                            104, 323,                           /* 起始坐标 (x, y) */
+                            COLOR_LIGHTGRAY,                    /* 文本颜色 */
+                            25                                  /* 字体大小 */
+                        );
+                    } else {
+                        /* 密码输入文本框 */
+                        lcd_render_text_with_box(
+                            user_info.password_number_buf,      /* 文本内容 */
+                            104, 310,                /* 起始坐标 (x, y) */
+                            COLOR_BLACK,             /* 文本颜色 */  
+                            COLOR_WHITE,             /* 文本框背景颜色 */
+                            0,                       /* 文本与文本框边缘的间距 */
+                            BOX_STYLE_RECTANGLE,     /* 矩形样式 */
+                            0,                       /* 矩形样式不需要半径 */
+                            50,                      /* 字体大小 */
+                            386,                       /* 文本框宽度 */
+                            50                        /* 文本框高度 */
+                        );
+                    }
                     break;  //debug
                 }
                 ts_fun();   //debug
@@ -726,13 +816,15 @@ void input_account_box() {
 
     while (2) {
         ts_fun();
-        if (input_x >= 104 && input_x <= 248 && input_y >= 310 && input_y <= 400) {
+        if (input_x >= 104 && input_x <= 290 && input_y >= 248 && input_y <= 300) {
+            input_account_box();
+            break;
+        } else if (input_x >= 104 && input_x <= 248 && input_y >= 310 && input_y <= 400) {
             input_password_box();
             break;
         } else if (input_x >= 104 && input_x <= 248 && input_y >= 400 && input_y <= 500) {
-            printf("未输入密码，无法登录\n");
-        } else {
-            continue;
+            login_judgment();
+            break;
         }
     }
 
@@ -747,7 +839,8 @@ void input_account_box() {
 }
 
 /* 密码输入实现 */
-void input_password_box() {
+void input_password_box() 
+{
     /* 初始化字库 */
     if (lcd_init("/dev/fb0", "simkai.ttf") != 0) {
         printf("初始化失败。\n");
@@ -863,32 +956,70 @@ void input_password_box() {
                     (input_x >= 876 && input_x <= 1024 && input_y >= 400 && input_y <= 600)) {
                     // 处理确认按钮点击事件
                     show_bmp_to_lcd("login_2.bmp");    //测试debug
-                    /* 账号输入文本框 */
-                    lcd_render_text_with_box(
-                        user_info.account_number_buf,      /* 文本内容 */
-                        104, 248,                /* 起始坐标 (x, y) */
-                        COLOR_BLACK,             /* 文本颜色 */
-                        COLOR_WHITE,             /* 文本框背景颜色 */   
-                        0,                       /* 文本与文本框边缘的间距 */
-                        BOX_STYLE_RECTANGLE,     /* 矩形样式 */
-                        0,                       /* 矩形样式不需要半径 */
-                        50,                      /* 字体大小 */
-                        386,                     /* 文本框宽度 */
-                        50                       /* 文本框高度 */
-                    );
-                    /* 密码输入文本框 */
-                    lcd_render_text_with_box(
-                        user_info.password_number_buf,      /* 文本内容 */
-                        104, 310,                /* 起始坐标 (x, y) */
-                        COLOR_BLACK,             /* 文本颜色 */  
-                        COLOR_WHITE,             /* 文本框背景颜色 */
-                        0,                       /* 文本与文本框边缘的间距 */
-                        BOX_STYLE_RECTANGLE,     /* 矩形样式 */
-                        0,                       /* 矩形样式不需要半径 */
-                        50,                      /* 字体大小 */
-                        386,                       /* 文本框宽度 */
-                        50                        /* 文本框高度 */
-                    );
+                    if (strlen(user_info.account_number_buf) == 0) {
+                        /* 账号输入文本框 */
+                        lcd_render_text_with_box(
+                            user_info.account_number_buf,      /* 文本内容 */
+                            104, 248,                /* 起始坐标 (x, y) */
+                            COLOR_BLACK,             /* 文本颜色 */
+                            COLOR_WHITE,             /* 文本框背景颜色 */   
+                            0,                       /* 文本与文本框边缘的间距 */
+                            BOX_STYLE_RECTANGLE,     /* 矩形样式 */
+                            0,                       /* 矩形样式不需要半径 */
+                            50,                      /* 字体大小 */
+                            386,                     /* 文本框宽度 */
+                            50                       /* 文本框高度 */
+                        );
+                        lcd_render_text(
+                            "请输入账号",                       /* 文本内容 */
+                            104, 260,                           /* 起始坐标 (x, y) */
+                            COLOR_LIGHTGRAY,                    /* 文本颜色 */
+                            25                                  /* 字体大小 */
+                        );
+                    } else {
+                        /* 账号输入文本框 */
+                        lcd_render_text_with_box(
+                            user_info.account_number_buf,      /* 文本内容 */
+                            104, 248,                /* 起始坐标 (x, y) */
+                            COLOR_BLACK,             /* 文本颜色 */
+                            COLOR_WHITE,             /* 文本框背景颜色 */   
+                            0,                       /* 文本与文本框边缘的间距 */
+                            BOX_STYLE_RECTANGLE,     /* 矩形样式 */
+                            0,                       /* 矩形样式不需要半径 */
+                            50,                      /* 字体大小 */
+                            386,                     /* 文本框宽度 */
+                            50                       /* 文本框高度 */
+                        );
+                    }
+
+                    if (strlen(user_info.password_number_buf) == 0) {
+                        /* 密码背景文本框 */
+                        lcd_draw_filled_rectangle(
+                            104, 310,       /* 左上角坐标 (x, y) */
+                            386, 50,        /* 矩形宽度和高度 */
+                            COLOR_WHITE     /* 填充颜色 */
+                        );
+                        lcd_render_text(
+                            "请输入密码",            /* 文本内容 */
+                            104, 323,                           /* 起始坐标 (x, y) */
+                            COLOR_LIGHTGRAY,                    /* 文本颜色 */
+                            25                                  /* 字体大小 */
+                        );
+                    } else {
+                        /* 密码输入文本框 */
+                        lcd_render_text_with_box(
+                            user_info.password_number_buf,      /* 文本内容 */
+                            104, 310,                /* 起始坐标 (x, y) */
+                            COLOR_BLACK,             /* 文本颜色 */  
+                            COLOR_WHITE,             /* 文本框背景颜色 */
+                            0,                       /* 文本与文本框边缘的间距 */
+                            BOX_STYLE_RECTANGLE,     /* 矩形样式 */
+                            0,                       /* 矩形样式不需要半径 */
+                            50,                      /* 字体大小 */
+                            386,                       /* 文本框宽度 */
+                            50                        /* 文本框高度 */
+                        );
+                    }
                     break;  /* 不再刷新，结束死循环 */
                 }
                 ts_fun();   //debug
@@ -1158,41 +1289,961 @@ void input_password_box() {
     }
 
     while (2) {
-        /* 登录按钮区域判定 */
         ts_fun();
-        /* 点击到登录按钮 */
-        if (input_x >= 104 && input_x <= 204 && input_y >= 431 && input_y <= 479) {
-            if (strlen(user_info.account_number_buf) != 0 && strlen(user_info.password_number_buf) != 0) {
-                show_bmp_to_lcd("1.bmp");    //测试debug
-                printf("login sucessful.\n");
-                break;
-            } else if (strlen(user_info.account_number_buf) == 0 && strlen(user_info.password_number_buf) == 0) {
-                lcd_render_text_with_box(
-                    "账号或密码为空，请重新登录",     /* 文本内容 */
-                    350, 400,                       /* 起始坐标 (x, y) */
-                    COLOR_WHITE,                    /* 文本颜色 */
-                    COLOR_LIGHTGRAY,                /* 文本框背景颜色 */
-                    10,                             /* 文本与文本框边缘的间距 */
-                    BOX_STYLE_ROUNDED,              /* 圆角样式 */
-                    15,                             /* 圆角半径 */
-                    30,                             /* 字体大小 */
-                    0,                              /* 文本框宽度 */
-                    0                               /* 文本框高度 */
-                );
-                sleep(3);
-                show_bmp_to_lcd("login_2.bmp"); 
-                /* 返回上一层 */ 
-                account_password_background_box();
-                break;  
-            } else if (strlen(user_info.account_number_buf) != 0 && strlen(user_info.password_number_buf) != 0) {
-                printf("账号密码正确，登录成功！\n");
-            } 
-            //show_bmp_to_lcd("1.bmp");    //测试debug
-            printf("login sucessful.\n");
-        } else {    /* 未点击到登录按钮，继续循环 */
-            continue;
+        if (input_x >= 104 && input_x <= 290 && input_y >= 248 && input_y <= 300) {
+            input_account_box();
+            break;
+        } else if (input_x >= 104 && input_x <= 248 && input_y >= 310 && input_y <= 400) {
+            input_password_box();
+            break;
+        } else if (input_x >= 104 && input_x <= 248 && input_y >= 400 && input_y <= 500) {
+            login_judgment();
+            break;
         }
-        break;
+    }
+
+    // 恢复标准输入的缓冲
+    system("stty icanon");
+
+    // 关闭触摸屏文件
+    close(input_fd);
+
+    // 清理资源
+    lcd_cleanup();
+}
+
+/* 注册账号实现 */
+void register_account_box() 
+{
+    /* 初始化字库 */
+    if (lcd_init("/dev/fb0", "simkai.ttf") != 0) {
+        printf("初始化失败。\n");
+        return;
+    }
+
+    /* 置顶账号输入框，以解决闪烁问题 */
+    show_bmp_to_lcd("login_2.bmp");    /* 加载背景图层 */
+    /* 绘制账号输入文本框背景 */
+    lcd_draw_filled_rectangle(
+        0, 0,               /* 左上角坐标 (x, y) */
+        1024, 143,          /* 矩形宽度和高度 */
+        COLOR_WHITE         /* 填充颜色 */ 
+    );
+    /* 绘制账号输入文本框 */
+    lcd_render_text_with_box(
+        user_info.account_number_buf,      /* 文本内容 */
+        70, 51,                /* 起始坐标 (x, y) */
+        COLOR_BLACK,             /* 文本颜色 */ 
+        COLOR_WHITE,             /* 文本框背景颜色 */ 
+        0,                       /* 文本与文本框边缘的间距 */ 
+        BOX_STYLE_RECTANGLE,     /* 矩形样式 */ 
+        0,                       /* 矩形样式不需要半径 */
+        60,                      /* 字体大小 */
+        0,                     /* 文本框宽度 */
+        0                       /* 文本框高度 */
+    );
+
+    /* 绘制确认按钮 */
+    lcd_render_text_with_box(
+        "确认",      /* 文本内容 */
+        800, 51,                /* 起始坐标 (x, y) */
+        COLOR_WHITE,             /* 文本颜色 */ 
+        COLOR_LIGHTGRAY,             /* 文本框背景颜色 */ 
+        0,                       /* 文本与文本框边缘的间距 */ 
+        BOX_STYLE_ROUNDED,     /* 矩形样式 */ 
+        15,                       /* 矩形样式不需要半径 */
+        60,                      /* 字体大小 */
+        0,                       /* 文本框宽度 */
+        0                        /* 文本框高度 */
+    );
+    keyboard();    /* 加载键盘 */
+
+    int m = strlen(user_info.account_number_buf);    /* 判断变量m，初始化为当前账号输入的长度 */ 
+    system("stty -icanon");     /* 禁用标准输入的缓冲 */ 
+
+    // 打开触摸屏文件
+    int input_fd = open("/dev/input/event1", O_RDWR);
+    if (input_fd == -1) {
+        perror("Failed to open touchscreen device");
+        return;
+    }
+
+    struct input_event input_buf;
+    fd_set readfds;
+
+    while (1) {
+        FD_ZERO(&readfds);
+        FD_SET(STDIN_FILENO, &readfds);
+        FD_SET(input_fd, &readfds);
+
+        // 使用select函数同时监听标准输入和触摸屏事件
+        int ret = select(input_fd + 1, &readfds, NULL, NULL, NULL);
+        if (ret == -1) {
+            perror("select");
+            break;
+        }
+
+        int input_changed = 0;  // 标记输入是否有变化
+
+        if (FD_ISSET(STDIN_FILENO, &readfds)) {
+            char buffer[4];  // 最大4字节的UTF-8字符
+            int bytes_read = read(STDIN_FILENO, buffer, sizeof(buffer));
+            if (bytes_read <= 0) continue;
+
+            if (buffer[0] == '-' && m > 0) {   /* 处理退格键，且输入框不为空 */ 
+                int i = m - 1;
+                /* 从当前位置向前查找UTF-8字符的起始字节 */ 
+                while (i > 0) {
+                    unsigned char c = (unsigned char)user_info.account_number_buf[i];
+                    /* 如果是后续字节 (0x80-0xBF)，继续向前查找 */ 
+                    if ((c & 0xC0) == 0x80) {
+                        i--;
+                    } else {
+                        /* 找到起始字节，退出循环 */ 
+                        break;
+                    }
+                }
+                /* 删除找到的UTF-8字符 */ 
+                int char_len = m - i;
+                if (char_len > 0) {
+                    memmove(&user_info.account_number_buf[i], &user_info.account_number_buf[m], sizeof(user_info.account_number_buf) - m);
+                    m = i;
+                    input_changed = 1;  // 标记输入有变化
+                }
+            } else if (buffer[0] != '-' && m + bytes_read < sizeof(user_info.account_number_buf)) {  /* 存储输入字符，且不为退格键 */ 
+                memcpy(&user_info.account_number_buf[m], buffer, bytes_read);
+                m += bytes_read;
+                input_changed = 1;  // 标记输入有变化
+            }
+        }
+
+        if (FD_ISSET(input_fd, &readfds)) {
+            // 读取触摸屏数据
+            read(input_fd, &input_buf, sizeof(input_buf));
+            if (input_buf.type == EV_ABS && input_buf.code == ABS_X) {
+                input_x = input_buf.value;
+            }
+            if (input_buf.type == EV_ABS && input_buf.code == ABS_Y) {
+                input_y = input_buf.value;
+            }
+            if (input_buf.type == EV_KEY && input_buf.code == BTN_TOUCH && input_buf.value == 0) {
+                // 判断是否点击了确认按钮
+                if ((input_x >= 800 && input_x <= 900 && input_y >= 51 && input_y <= 111) || 
+                    (input_x >= 876 && input_x <= 1024 && input_y >= 400 && input_y <= 600)) {  /* 确认按钮和确认键 */
+                    /* 处理确认按钮点击事件 */ 
+                    show_bmp_to_lcd("login_2.bmp");    /* 加载背景图层 */
+                    if (strlen(user_info.account_number_buf) == 0) {
+                        /* 账号背景文本框 */
+                        lcd_draw_filled_rectangle(
+                            104, 248,       /* 左上角坐标 (x, y) */
+                            386, 50,        /* 矩形宽度和高度 */
+                            COLOR_WHITE     /* 填充颜色 */
+                        );
+                        lcd_render_text(
+                            "请输入要注册的账号",                       /* 文本内容 */
+                            104, 260,                           /* 起始坐标 (x, y) */
+                            COLOR_LIGHTGRAY,                    /* 文本颜色 */
+                            25                                  /* 字体大小 */
+                        );            
+                    } else {
+                        /* 账号输入文本框 */ 
+                        lcd_render_text_with_box(
+                            user_info.account_number_buf,      /* 文本内容 */
+                            104, 248,                /* 起始坐标 (x, y) */
+                            COLOR_BLACK,             /* 文本颜色 */ 
+                            COLOR_WHITE,             /* 文本框背景颜色 */ 
+                            0,                       /* 文本与文本框边缘的间距 */ 
+                            BOX_STYLE_RECTANGLE,     /* 矩形样式 */ 
+                            0,                       /* 矩形样式不需要半径 */
+                            50,                      /* 字体大小 */
+                            386,                     /* 文本框宽度 */
+                            50                       /* 文本框高度 */
+                        );  
+                    }
+
+                    if (strlen(user_info.password_number_buf) == 0) {
+                        /* 密码背景文本框 */
+                        lcd_draw_filled_rectangle(
+                            104, 310,       /* 左上角坐标 (x, y) */
+                            386, 50,        /* 矩形宽度和高度 */
+                            COLOR_WHITE     /* 填充颜色 */
+                        );
+                        lcd_render_text(
+                            "请输入不少于8位数的密码",                       /* 文本内容 */
+                            104, 323,                           /* 起始坐标 (x, y) */
+                            COLOR_LIGHTGRAY,                    /* 文本颜色 */
+                            25                                  /* 字体大小 */
+                        );
+                    } else {
+                        /* 密码输入文本框 */
+                        lcd_render_text_with_box(
+                            user_info.password_number_buf,      /* 文本内容 */
+                            104, 310,                /* 起始坐标 (x, y) */
+                            COLOR_BLACK,             /* 文本颜色 */  
+                            COLOR_WHITE,             /* 文本框背景颜色 */
+                            0,                       /* 文本与文本框边缘的间距 */
+                            BOX_STYLE_RECTANGLE,     /* 矩形样式 */
+                            0,                       /* 矩形样式不需要半径 */
+                            50,                      /* 字体大小 */
+                            386,                       /* 文本框宽度 */
+                            50                        /* 文本框高度 */
+                        );
+                    }
+                    break;  //debug
+                }
+                ts_fun();   //debug
+                // 处理键盘点击事件
+                if (input_x >= 224 && input_x <= 810 && input_y >= 503 && input_y <= 600) { //空格键
+                    strcat(user_info.account_number_buf, " ");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 0 && input_x <= 100 && input_y >= 198 && input_y <= 254) { //Q键
+                    strcat(user_info.account_number_buf, "Q");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 144 && input_x <= 210 && input_y >= 198 && input_y <= 254) { //W键
+                    strcat(user_info.account_number_buf, "W");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 247 && input_x <= 301 && input_y >= 198 && input_y <= 254) { //E键
+                    strcat(user_info.account_number_buf, "E");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 331 && input_x <= 400 && input_y >= 198 && input_y <= 254) { //R键
+                    strcat(user_info.account_number_buf, "R");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 436 && input_x <= 495 && input_y >= 198 && input_y <= 254) { //T键
+                    strcat(user_info.account_number_buf, "T");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 544 && input_x <= 600 && input_y >= 198 && input_y <= 254) { //Y键
+                    strcat(user_info.account_number_buf, "Y");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 640 && input_x <= 694 && input_y >= 198 && input_y <= 254) { //U键
+                    strcat(user_info.account_number_buf, "U");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 740 && input_x <= 797 && input_y >= 198 && input_y <= 254) { //I键
+                    strcat(user_info.account_number_buf, "I");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 834 && input_x <= 900 && input_y >= 198 && input_y <= 254) { //O键
+                    strcat(user_info.account_number_buf, "O");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 927 && input_x <= 1024 && input_y >= 198 && input_y <= 254) { //P键
+                    strcat(user_info.account_number_buf, "P");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 104 && input_x <= 150 && input_y >= 297 && input_y <= 353) { //A键
+                    strcat(user_info.account_number_buf, "A");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 194 && input_x <= 264 && input_y >= 297 && input_y <= 353) { //S键
+                    strcat(user_info.account_number_buf, "S");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 291 && input_x <= 350 && input_y >= 297 && input_y <= 353) { //D键
+                    strcat(user_info.account_number_buf, "D");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 385 && input_x <= 447 && input_y >= 297 && input_y <= 353) { //F键
+                    strcat(user_info.account_number_buf, "F");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 489 && input_x <= 544 && input_y >= 297 && input_y <= 353) { //G键
+                    strcat(user_info.account_number_buf, "G");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 589 && input_x <= 647 && input_y >= 297 && input_y <= 353) { //H键
+                    strcat(user_info.account_number_buf, "H");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 697 && input_x <= 742 && input_y >= 297 && input_y <= 353) { //J键
+                    strcat(user_info.account_number_buf, "J");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 789 && input_x <= 847 && input_y >= 297 && input_y <= 353) { //K键
+                    strcat(user_info.account_number_buf, "K");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 894 && input_x <= 938 && input_y >= 297 && input_y <= 353) { //L键
+                    strcat(user_info.account_number_buf, "L");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 155 && input_x <= 205 && input_y >= 400 && input_y <= 458) { //Z键
+                    strcat(user_info.account_number_buf, "Z");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 249 && input_x <= 297 && input_y >= 400 && input_y <= 458) { //X键
+                    strcat(user_info.account_number_buf, "X");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 342 && input_x <= 400 && input_y >= 400 && input_y <= 458) { //C键
+                    strcat(user_info.account_number_buf, "C");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 445 && input_x <= 495 && input_y >= 400 && input_y <= 458) { //V键
+                    strcat(user_info.account_number_buf, "V");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 541 && input_x <= 589 && input_y >= 400 && input_y <= 458) { //B键
+                    strcat(user_info.account_number_buf, "B");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 641 && input_x <= 692 && input_y >= 400 && input_y <= 458) { //N键
+                    strcat(user_info.account_number_buf, "N");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 739 && input_x <= 800 && input_y >= 400 && input_y <= 458) { //M键
+                    strcat(user_info.account_number_buf, "M");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 0 && input_x <= 120 && input_y >= 393 && input_y <= 600) { //删除键
+                    user_info.account_number_buf[strlen(user_info.account_number_buf) - 1] = '\0';
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+            }
+        }
+
+        // 只有当输入有变化时才更新文本框显示
+        if (input_changed) {
+            // 绘制账号输入文本框背景
+            lcd_draw_filled_rectangle(
+                0, 0,               /* 左上角坐标 (x, y) */
+                1024, 143,          /* 矩形宽度和高度 */
+                COLOR_WHITE         /* 填充颜色 */ 
+            );
+            /* 账号输入文本框 */ 
+            lcd_render_text_with_box(
+                user_info.account_number_buf,      /* 文本内容 */
+                70, 51,                /* 起始坐标 (x, y) */
+                COLOR_BLACK,             /* 文本颜色 */ 
+                COLOR_WHITE,             /* 文本框背景颜色 */ 
+                0,                       /* 文本与文本框边缘的间距 */ 
+                BOX_STYLE_RECTANGLE,     /* 矩形样式 */ 
+                0,                       /* 矩形样式不需要半径 */
+                60,                      /* 字体大小 */
+                0,                     /* 文本框宽度 */
+                0                       /* 文本框高度 */
+            );        
+            /* 确认按钮 */
+            lcd_render_text_with_box(
+                "确认",      /* 文本内容 */
+                800, 51,                /* 起始坐标 (x, y) */
+                COLOR_WHITE,             /* 文本颜色 */ 
+                COLOR_LIGHTGRAY,             /* 文本框背景颜色 */ 
+                0,                       /* 文本与文本框边缘的间距 */ 
+                BOX_STYLE_ROUNDED,     /* 矩形样式 */ 
+                15,                       /* 矩形样式不需要半径 */
+                60,                      /* 字体大小 */
+                0,                       /* 文本框宽度 */
+                0                        /* 文本框高度 */
+            );
+            //keyboard();    /* 加载键盘 */
+        }
+    }
+
+    while (2) {
+        ts_fun();
+        if (input_x >= 104 && input_x <= 290 && input_y >= 248 && input_y <= 300) {
+            register_account_box();
+            break;
+        } else if (input_x >= 104 && input_x <= 248 && input_y >= 310 && input_y <= 400) {
+            register_password_box();
+            break;
+        } else if (input_x >= 250 && input_x <= 361 && input_y >= 424 && input_y <= 484) {
+            register_judgment();
+            break;
+        }
+    }
+
+    // 恢复标准输入的缓冲
+    system("stty icanon");
+
+    // 关闭触摸屏文件
+    close(input_fd);
+
+    // 清理资源
+    lcd_cleanup();
+}
+
+/* 注册账号密码实现 */
+void register_password_box() 
+{
+    /* 初始化字库 */
+    if (lcd_init("/dev/fb0", "simkai.ttf") != 0) {
+        printf("初始化失败。\n");
+        return;
+    }
+    show_bmp_to_lcd("login_2.bmp");    /* 加载背景图层 */
+    // 绘制账号输入文本框背景
+    lcd_draw_filled_rectangle(
+        0, 0,               /* 左上角坐标 (x, y) */
+        1024, 143,          /* 矩形宽度和高度 */
+        COLOR_WHITE         /* 填充颜色 */ 
+    );
+    /* 绘制密码输入文本框 */
+    lcd_render_text_with_box(
+        user_info.password_number_buf,      /* 文本内容 */
+        70, 51,                /* 起始坐标 (x, y) */
+        COLOR_BLACK,             /* 文本颜色 */ 
+        COLOR_WHITE,             /* 文本框背景颜色 */ 
+        0,                       /* 文本与文本框边缘的间距 */ 
+        BOX_STYLE_RECTANGLE,     /* 矩形样式 */ 
+        0,                       /* 矩形样式不需要半径 */
+        60,                      /* 字体大小 */
+        0,                     /* 文本框宽度 */
+        0                       /* 文本框高度 */
+    );
+
+    /* 绘制确认按钮 */
+    lcd_render_text_with_box(
+        "确认",      /* 文本内容 */
+        800, 51,                /* 起始坐标 (x, y) */
+        COLOR_WHITE,             /* 文本颜色 */ 
+        COLOR_LIGHTGRAY,             /* 文本框背景颜色 */ 
+        0,                       /* 文本与文本框边缘的间距 */ 
+        BOX_STYLE_ROUNDED,     /* 矩形样式 */ 
+        15,                       /* 矩形样式不需要半径 */
+        60,                      /* 字体大小 */
+        0,                       /* 文本框宽度 */
+        0                        /* 文本框高度 */
+    );
+    keyboard();    /* 加载键盘 */
+    
+    int m = strlen(user_info.password_number_buf);    /* 判断变量m，初始化为当前账号输入的长度 */ 
+    system("stty -icanon");     /* 禁用标准输入的缓冲 */ 
+
+    // 打开触摸屏文件
+    int input_fd = open("/dev/input/event1", O_RDWR);
+    if (input_fd == -1) {
+        perror("Failed to open touchscreen device");
+        return;
+    }
+
+    struct input_event input_buf;
+    fd_set readfds;
+
+    while (1) {
+        FD_ZERO(&readfds);
+        FD_SET(STDIN_FILENO, &readfds);
+        FD_SET(input_fd, &readfds);
+
+        // 使用select函数同时监听标准输入和触摸屏事件
+        int ret = select(input_fd + 1, &readfds, NULL, NULL, NULL);
+        if (ret == -1) {
+            perror("select");
+            break;
+        }
+
+        int input_changed = 0;  // 标记输入是否有变化
+
+        if (FD_ISSET(STDIN_FILENO, &readfds)) {
+            char buffer[4];  // 最大4字节的UTF-8字符
+            int bytes_read = read(STDIN_FILENO, buffer, sizeof(buffer));
+            if (bytes_read <= 0) continue;
+
+            if (buffer[0] == '-' && m > 0) {   /* 处理退格键，且输入框不为空 */ 
+                int i = m - 1;
+                /* 从当前位置向前查找UTF-8字符的起始字节 */ 
+                while (i > 0) {
+                    unsigned char c = (unsigned char)user_info.password_number_buf[i];
+                    /* 如果是后续字节 (0x80-0xBF)，继续向前查找 */ 
+                    if ((c & 0xC0) == 0x80) {
+                        i--;
+                    } else {
+                        /* 找到起始字节，退出循环 */ 
+                        break;
+                    }
+                }
+                /* 删除找到的UTF-8字符 */ 
+                int char_len = m - i;
+                if (char_len > 0) {
+                    memmove(&user_info.password_number_buf[i], &user_info.password_number_buf[m], sizeof(user_info.password_number_buf) - m);
+                    m = i;
+                    input_changed = 1;  // 标记输入有变化
+                }
+            } else if (buffer[0] != '-' && m + bytes_read < sizeof(user_info.password_number_buf)) {  /* 存储输入字符，且不为退格键 */ 
+                memcpy(&user_info.password_number_buf[m], buffer, bytes_read);
+                m += bytes_read;
+                input_changed = 1;  // 标记输入有变化
+            }
+        }
+
+        if (FD_ISSET(input_fd, &readfds)) {
+            // 读取触摸屏数据
+            read(input_fd, &input_buf, sizeof(input_buf));
+            if (input_buf.type == EV_ABS && input_buf.code == ABS_X) {
+                input_x = input_buf.value;
+            }
+            if (input_buf.type == EV_ABS && input_buf.code == ABS_Y) {
+                input_y = input_buf.value;
+            }
+            if (input_buf.type == EV_KEY && input_buf.code == BTN_TOUCH && input_buf.value == 0) {
+                // 判断是否点击了确认按钮
+                if ((input_x >= 800 && input_x <= 900 && input_y >= 51 && input_y <= 111) ||
+                    (input_x >= 876 && input_x <= 1024 && input_y >= 400 && input_y <= 600)) {
+                    // 处理确认按钮点击事件
+                    show_bmp_to_lcd("login_2.bmp");    //测试debug
+                    if (strlen(user_info.account_number_buf) == 0) {
+                        /* 账号输入文本框 */
+                        lcd_render_text_with_box(
+                            user_info.account_number_buf,      /* 文本内容 */
+                            104, 248,                /* 起始坐标 (x, y) */
+                            COLOR_BLACK,             /* 文本颜色 */
+                            COLOR_WHITE,             /* 文本框背景颜色 */   
+                            0,                       /* 文本与文本框边缘的间距 */
+                            BOX_STYLE_RECTANGLE,     /* 矩形样式 */
+                            0,                       /* 矩形样式不需要半径 */
+                            50,                      /* 字体大小 */
+                            386,                     /* 文本框宽度 */
+                            50                       /* 文本框高度 */
+                        );
+                        lcd_render_text(
+                            "请输入要注册的账号",                       /* 文本内容 */
+                            104, 260,                           /* 起始坐标 (x, y) */
+                            COLOR_LIGHTGRAY,                    /* 文本颜色 */
+                            25                                  /* 字体大小 */
+                        );
+                    } else {
+                        /* 账号输入文本框 */
+                        lcd_render_text_with_box(
+                            user_info.account_number_buf,      /* 文本内容 */
+                            104, 248,                /* 起始坐标 (x, y) */
+                            COLOR_BLACK,             /* 文本颜色 */
+                            COLOR_WHITE,             /* 文本框背景颜色 */   
+                            0,                       /* 文本与文本框边缘的间距 */
+                            BOX_STYLE_RECTANGLE,     /* 矩形样式 */
+                            0,                       /* 矩形样式不需要半径 */
+                            50,                      /* 字体大小 */
+                            386,                     /* 文本框宽度 */
+                            50                       /* 文本框高度 */
+                        );
+                    }
+
+                    if (strlen(user_info.password_number_buf) == 0) {
+                        /* 密码背景文本框 */
+                        lcd_draw_filled_rectangle(
+                            104, 310,       /* 左上角坐标 (x, y) */
+                            386, 50,        /* 矩形宽度和高度 */
+                            COLOR_WHITE     /* 填充颜色 */
+                        );
+                        lcd_render_text(
+                            "请输入不少于8位数的密码",            /* 文本内容 */
+                            104, 323,                           /* 起始坐标 (x, y) */
+                            COLOR_LIGHTGRAY,                    /* 文本颜色 */
+                            25                                  /* 字体大小 */
+                        );
+                    } else {
+                        /* 密码输入文本框 */
+                        lcd_render_text_with_box(
+                            user_info.password_number_buf,      /* 文本内容 */
+                            104, 310,                /* 起始坐标 (x, y) */
+                            COLOR_BLACK,             /* 文本颜色 */  
+                            COLOR_WHITE,             /* 文本框背景颜色 */
+                            0,                       /* 文本与文本框边缘的间距 */
+                            BOX_STYLE_RECTANGLE,     /* 矩形样式 */
+                            0,                       /* 矩形样式不需要半径 */
+                            50,                      /* 字体大小 */
+                            386,                       /* 文本框宽度 */
+                            50                        /* 文本框高度 */
+                        );
+                    }
+                    break;  /* 不再刷新，结束死循环 */
+                }
+                ts_fun();   //debug
+                // 处理键盘点击事件
+                if (input_x >= 224 && input_x <= 810 && input_y >= 503 && input_y <= 600) { //空格键
+                    strcat(user_info.password_number_buf, " ");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 0 && input_x <= 100 && input_y >= 198 && input_y <= 254) { //Q键
+                    strcat(user_info.password_number_buf, "Q");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 144 && input_x <= 210 && input_y >= 198 && input_y <= 254) { //W键
+                    strcat(user_info.password_number_buf, "W");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 247 && input_x <= 301 && input_y >= 198 && input_y <= 254) { //E键
+                    strcat(user_info.password_number_buf, "E");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 331 && input_x <= 400 && input_y >= 198 && input_y <= 254) { //R键
+                    strcat(user_info.password_number_buf, "R");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 436 && input_x <= 495 && input_y >= 198 && input_y <= 254) { //T键
+                    strcat(user_info.password_number_buf, "T");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 544 && input_x <= 600 && input_y >= 198 && input_y <= 254) { //Y键
+                    strcat(user_info.password_number_buf, "Y");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 640 && input_x <= 694 && input_y >= 198 && input_y <= 254) { //U键
+                    strcat(user_info.password_number_buf, "U");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 740 && input_x <= 797 && input_y >= 198 && input_y <= 254) { //I键
+                    strcat(user_info.password_number_buf, "I");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 834 && input_x <= 900 && input_y >= 198 && input_y <= 254) { //O键
+                    strcat(user_info.password_number_buf, "O");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 927 && input_x <= 1024 && input_y >= 198 && input_y <= 254) { //P键
+                    strcat(user_info.password_number_buf, "P");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 104 && input_x <= 150 && input_y >= 297 && input_y <= 353) { //A键
+                    strcat(user_info.password_number_buf, "A");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 194 && input_x <= 264 && input_y >= 297 && input_y <= 353) { //S键
+                    strcat(user_info.password_number_buf, "S");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 291 && input_x <= 350 && input_y >= 297 && input_y <= 353) { //D键
+                    strcat(user_info.password_number_buf, "D");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 385 && input_x <= 447 && input_y >= 297 && input_y <= 353) { //F键
+                    strcat(user_info.password_number_buf, "F");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 489 && input_x <= 544 && input_y >= 297 && input_y <= 353) { //G键
+                    strcat(user_info.password_number_buf, "G");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 589 && input_x <= 647 && input_y >= 297 && input_y <= 353) { //H键
+                    strcat(user_info.password_number_buf, "H");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 697 && input_x <= 742 && input_y >= 297 && input_y <= 353) { //J键
+                    strcat(user_info.password_number_buf, "J");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 789 && input_x <= 847 && input_y >= 297 && input_y <= 353) { //K键
+                    strcat(user_info.password_number_buf, "K");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 894 && input_x <= 938 && input_y >= 297 && input_y <= 353) { //L键
+                    strcat(user_info.password_number_buf, "L");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 155 && input_x <= 205 && input_y >= 400 && input_y <= 458) { //Z键
+                    strcat(user_info.password_number_buf, "Z");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 249 && input_x <= 297 && input_y >= 400 && input_y <= 458) { //X键
+                    strcat(user_info.password_number_buf, "X");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 342 && input_x <= 400 && input_y >= 400 && input_y <= 458) { //C键
+                    strcat(user_info.password_number_buf, "C");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 445 && input_x <= 495 && input_y >= 400 && input_y <= 458) { //V键
+                    strcat(user_info.password_number_buf, "V");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 541 && input_x <= 589 && input_y >= 400 && input_y <= 458) { //B键
+                    strcat(user_info.password_number_buf, "B");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 641 && input_x <= 692 && input_y >= 400 && input_y <= 458) { //N键
+                    strcat(user_info.password_number_buf, "N");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 739 && input_x <= 800 && input_y >= 400 && input_y <= 458) { //M键
+                    strcat(user_info.password_number_buf, "M");
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+                if (input_x >= 0 && input_x <= 120 && input_y >= 393 && input_y <= 600) { //删除键
+                    user_info.password_number_buf[strlen(user_info.password_number_buf) - 1] = '\0';
+                    input_changed = 1;  // 标记输入有变化
+                    // 重置输入状态，确保后续键盘输入正常处理
+                    FD_ZERO(&readfds);
+                    FD_SET(STDIN_FILENO, &readfds);
+                    FD_SET(input_fd, &readfds);
+                }
+            }
+        }
+
+        // 只有当输入有变化时才更新文本框显示
+        if (input_changed) {
+            // 绘制密码输入文本框背景
+            lcd_draw_filled_rectangle(
+                0, 0,               /* 左上角坐标 (x, y) */
+                1024, 143,          /* 矩形宽度和高度 */
+                COLOR_WHITE         /* 填充颜色 */ 
+            );
+            /* 密码输入文本框 */ 
+            lcd_render_text_with_box(
+                user_info.password_number_buf,      /* 文本内容 */
+                70, 51,                /* 起始坐标 (x, y) */
+                COLOR_BLACK,             /* 文本颜色 */ 
+                COLOR_WHITE,             /* 文本框背景颜色 */ 
+                0,                       /* 文本与文本框边缘的间距 */ 
+                BOX_STYLE_RECTANGLE,     /* 矩形样式 */ 
+                0,                       /* 矩形样式不需要半径 */
+                60,                      /* 字体大小 */
+                0,                     /* 文本框宽度 */
+                0                       /* 文本框高度 */
+            );        
+            /* 确认按钮 */
+            lcd_render_text_with_box(
+                "确认",                 /* 文本内容 */
+                800, 51,                /* 起始坐标 (x, y) */
+                COLOR_WHITE,            /* 文本颜色 */ 
+                COLOR_LIGHTGRAY,        /* 文本框背景颜色 */ 
+                0,                      /* 文本与文本框边缘的间距 */ 
+                BOX_STYLE_ROUNDED,      /* 矩形样式 */ 
+                15,                     /* 矩形样式不需要半径 */
+                60,                     /* 字体大小 */
+                0,                      /* 文本框宽度 */
+                0                       /* 文本框高度 */
+            );
+        }
+    }
+
+    while (2) {
+        ts_fun();
+        if (input_x >= 104 && input_x <= 290 && input_y >= 248 && input_y <= 300) {
+            register_account_box();
+            break;
+        } else if (input_x >= 104 && input_x <= 248 && input_y >= 310 && input_y <= 400) {
+            register_password_box();
+            break;
+        } else if (input_x >= 250 && input_x <= 361 && input_y >= 424 && input_y <= 484) {
+            register_judgment();
+            break;
+        }
     }
 
     // 恢复标准输入的缓冲
@@ -1220,55 +2271,23 @@ void home_fun() {
         } else {
             not_open_game_notification();
             sleep(2);
-            main();
+            home_fun();
         }
+        /* 记得写break,你也不想main()之后再执行操作死循环吧 */
+        break;
     }
-    return;
 }
 
 void login_fun() {
-    /* 登录界面 */ 
+    /* 初始选择登录界面 */ 
     while(1) {
         ts_fun();
         if (input_x >= 399 && input_x <= 621 && input_y >= 385 && input_y <= 490) {
-            show_bmp_to_lcd("login_2.bmp");
-            account_password_background_box();
-            while (2) {
-                ts_fun();
-                if (input_x >= 104 && input_x <= 290 && input_y >= 248 && input_y <= 300) {
-                    input_account_box();
-                } else if (input_x >= 104 && input_x <= 290 && input_y >= 310 && input_y <= 400) {
-                    input_password_box();
-                } else if (input_x >= 104 && input_x <= 290 && input_y >= 400 && input_y <= 490) {      
-                    /* 
-                    * 首次无账号密码就登陆
-                    * 首次登陆账号与密码必为空值
-                    */
-                    lcd_render_text_with_box(
-                        "账号或密码为空，禁止登陆",
-                        350, 400,
-                        COLOR_WHITE,
-                        COLOR_LIGHTGRAY,
-                        10,
-                        BOX_STYLE_ROUNDED,
-                        15,
-                        30,
-                        0,
-                        0
-                    );
-                    //printf("禁止登陆");   //debug
-                    sleep(2);
-                    /* 刷新文本框 */
-                    show_bmp_to_lcd("login_2.bmp");
-                    account_password_background_box();  
-                    continue;   /* 继续循环 */
-                } else {
-                    continue;   /* 继续循环 */
-                }
-                break;  /* 一定要写，不然会死循环 */
-            }
-            break;  /* 已经判定成功了，无需执行下一步 */
+            /* 进入登录引导界面 */
+            login_boot();
+            break;
         } else if (input_x >= 942 && input_x <= 1024 && input_y >= 524 && input_y <= 600) {
+            /* 点击到关闭按钮 */
             show_bmp_to_lcd("login_exit.bmp");
             while(2) {
                 ts_fun();
@@ -1280,17 +2299,102 @@ void login_fun() {
                 }
                 break;
             }
-            /* 
-            * 不能提前结束循环，
-            * 需继续判定，
-            * 直到点到账号或密码文本框为止 
-            */
+            break;
+        }
+    }
+}
+
+/* 登录界面引导 */
+void login_boot() 
+{
+    /* 进入到登录界面 */
+    show_bmp_to_lcd("login_2.bmp");
+    account_password_background_box();
+    while (2) {
+        ts_fun();
+        if (input_x >= 104 && input_x <= 290 && input_y >= 248 && input_y <= 300) {
+            input_account_box();    /* 点击到输入账号文本框 */    
+        } else if (input_x >= 104 && input_x <= 290 && input_y >= 310 && input_y <= 400) {
+            input_password_box();   /* 点击到输入密码文本框 */
+        } else if (input_x >= 250 && input_x <= 361 && input_y >= 424 && input_y <= 484) {
+            register_background_box();  /* 点击到注册账号按钮 */
+            while (3) {
+                ts_fun();
+                if (input_x >= 104 && input_x <= 290 && input_y >= 248 && input_y <= 300) {
+                    register_account_box();
+                    break;
+                } else if (input_x >= 104 && input_x <= 290 && input_y >= 310 && input_y <= 400) {
+                    register_password_box();
+                    break;
+                }
+            }
+        } else if (input_x >= 104 && input_x <= 208 && input_y >= 424 && input_y <= 484) {      
+            register_judgment();   /* 点击到注册按钮 */
+        } else {
+            continue;
         }
         /* 
-        * 此处写break是因为当继续停留在login_fun()函数时，
+        * 此处写break是因为当继续停留在login_boot()函数时，
         * 若成功进入游戏会陷进这里的死循环
         */
-        break;  
+        break;
+    }
+}
+
+/* 登录判断 */
+void login_judgment() {
+    if (strlen(user_info.account_number_buf) != 0 && strlen(user_info.password_number_buf) != 0) {
+        printf("login sucessful.\n");
+    } else if (strlen(user_info.account_number_buf) == 0 || strlen(user_info.password_number_buf) == 0) {
+        lcd_render_text_with_box(
+            "账号或密码为空，请重新登录",     /* 文本内容 */
+            350, 400,                       /* 起始坐标 (x, y) */
+            COLOR_WHITE,                    /* 文本颜色 */
+            COLOR_LIGHTGRAY,                /* 文本框背景颜色 */
+            10,                             /* 文本与文本框边缘的间距 */
+            BOX_STYLE_ROUNDED,              /* 圆角样式 */
+            15,                             /* 圆角半径 */
+            30,                             /* 字体大小 */
+            0,                              /* 文本框宽度 */
+            0                               /* 文本框高度 */
+        );
+        sleep(3);
+        show_bmp_to_lcd("login_2.bmp"); 
+        printf("login failed.\n");
+        /* 返回上一层 */ 
+        memset(user_info.account_number_buf, 0, sizeof(user_info.account_number_buf));
+        memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
+        login_boot();
+    }
+}
+
+/* 注册判断 */
+void register_judgment() {
+    if (strlen(user_info.account_number_buf) != 0 && strlen(user_info.password_number_buf) != 0) {
+        printf("register sucessful.\n");
+        memset(user_info.account_number_buf, 0, sizeof(user_info.account_number_buf));
+        memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
+        login_boot();
+    } else if (strlen(user_info.account_number_buf) == 0 || strlen(user_info.password_number_buf) == 0) {
+        lcd_render_text_with_box(
+            "账号或密码为空，请重新注册",     /* 文本内容 */
+            350, 400,                       /* 起始坐标 (x, y) */
+            COLOR_WHITE,                    /* 文本颜色 */
+            COLOR_LIGHTGRAY,                /* 文本框背景颜色 */
+            10,                             /* 文本与文本框边缘的间距 */
+            BOX_STYLE_ROUNDED,              /* 圆角样式 */
+            15,                             /* 圆角半径 */
+            30,                             /* 字体大小 */
+            0,                              /* 文本框宽度 */
+            0                               /* 文本框高度 */
+        );
+        sleep(3);
+        show_bmp_to_lcd("login_2.bmp"); 
+        printf("register failed.\n");
+        /* 返回上一层 */ 
+        memset(user_info.account_number_buf, 0, sizeof(user_info.account_number_buf));
+        memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
+        login_boot();
     }
 }
 
@@ -1298,10 +2402,18 @@ void game_start_home() {
     show_bmp_to_lcd("1.bmp");
 }
 
-int main() {
+int main() 
+{
     home_fun();
     login_fun();
-    //notification();
+    /*
+    * 逻辑：当在login_fun()调用login_boot()后，
+    * 跳转至login_judement进行判断，若账号与密码都输入正确，会跳转到game_start_home()，
+    * 绕过main函数的login_judgment()。
+    * 若此时main函数在增加login_judgment()会进行重复判定，产生错误，
+    * 因此注释掉login_judgment()。
+    */
+    //login_judement();
     game_start_home();
     return 0;
 }
