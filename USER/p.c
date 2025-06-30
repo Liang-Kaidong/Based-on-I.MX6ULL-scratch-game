@@ -1,8 +1,8 @@
 /*************************************************************************************************************
 File name: p.c
 Author: KD
-Version: V_2.0
-Build date: 2024-06-29
+Version: V_2.1
+Build date: 2024-06-30
 Description: NONE
 Others: Usage requires preservation of original author attribution.
 Log: 1.优化登录界面逻辑
@@ -11,9 +11,10 @@ Log: 1.优化登录界面逻辑
      4.新增账号登录判断逻辑部分
      5.新增账号注册界面
      6.新增账号注册判断逻辑部分
-     7.修复因未及时跳出循环时导致的逻辑错误
-     8.修复空账号或空密码能够实现登录的问题
-     9.修复修复空账号或空密码能够实现注册的问题
+     7.新增自动获取屏幕尺寸并自定义bmp图片的展示位置和尺寸
+     8.修复因未及时跳出循环时导致的逻辑错误
+     9.修复空账号或空密码能够实现登录的问题
+     10.修复修复空账号或空密码能够实现注册的问题
 bug: 1.账号登陆与注册判断逻辑部分缺乏屏幕提示
      2.账号注册页面暂时未实现账号注册，在下一个版本更进更新
 *************************************************************************************************************/
@@ -221,6 +222,7 @@ void account_password_background_box()
         25                                  /* 字体大小 */
     );
 
+    show_bmp_to_lcd("show_password.bmp", 290, 200, 40, 40);
     /* 清理资源 */
     //lcd_cleanup();    /* 请不要启用，会导致输入开始时无效，并且会导致多种问题，建议后来者覆盖 */
 }
@@ -275,7 +277,7 @@ void* account_input_refresh(void* arg)
         }
 
         /* 置顶账号输入框，以解决闪烁问题 */
-        show_bmp_to_lcd("login_2.bmp");    /* 加载背景图层 */
+        show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
         /* 绘制账号输入文本框背景 */
         lcd_draw_filled_rectangle(
             0, 0,               /* 左上角坐标 (x, y) */
@@ -327,7 +329,7 @@ void* password_input_refresh(void* arg)
         }
 
         /* 置顶密码输入框，以解决闪烁问题 */
-        show_bmp_to_lcd("login_2.bmp");    /* 加载背景图层 */
+        show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
         /* 绘制密码输入文本框背景 */
         lcd_draw_filled_rectangle(
             0, 0,               /* 左上角坐标 (x, y) */
@@ -378,7 +380,7 @@ void input_account_box()
     }
 
     /* 置顶账号输入框，以解决闪烁问题 */
-    show_bmp_to_lcd("login_2.bmp");    /* 加载背景图层 */
+    show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
     /* 绘制账号输入文本框背景 */
     lcd_draw_filled_rectangle(
         0, 0,               /* 左上角坐标 (x, y) */
@@ -487,7 +489,7 @@ void input_account_box()
                 if ((input_x >= 800 && input_x <= 900 && input_y >= 51 && input_y <= 111) || 
                     (input_x >= 876 && input_x <= 1024 && input_y >= 400 && input_y <= 600)) {  /* 确认按钮和确认键 */
                     /* 处理确认按钮点击事件 */ 
-                    show_bmp_to_lcd("login_2.bmp");    /* 加载背景图层 */
+                    show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
                     if (strlen(user_info.account_number_buf) == 0) {
                         /* 账号背景文本框 */
                         lcd_draw_filled_rectangle(
@@ -827,7 +829,7 @@ void input_account_box()
             break;
         }
     }
-
+    
     // 恢复标准输入的缓冲
     system("stty icanon");
 
@@ -846,7 +848,7 @@ void input_password_box()
         printf("初始化失败。\n");
         return;
     }
-    show_bmp_to_lcd("login_2.bmp");    /* 加载背景图层 */
+    show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
     // 绘制账号输入文本框背景
     lcd_draw_filled_rectangle(
         0, 0,               /* 左上角坐标 (x, y) */
@@ -955,7 +957,7 @@ void input_password_box()
                 if ((input_x >= 800 && input_x <= 900 && input_y >= 51 && input_y <= 111) ||
                     (input_x >= 876 && input_x <= 1024 && input_y >= 400 && input_y <= 600)) {
                     // 处理确认按钮点击事件
-                    show_bmp_to_lcd("login_2.bmp");    //测试debug
+                    show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    //测试debug
                     if (strlen(user_info.account_number_buf) == 0) {
                         /* 账号输入文本框 */
                         lcd_render_text_with_box(
@@ -1322,7 +1324,7 @@ void register_account_box()
     }
 
     /* 置顶账号输入框，以解决闪烁问题 */
-    show_bmp_to_lcd("login_2.bmp");    /* 加载背景图层 */
+    show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
     /* 绘制账号输入文本框背景 */
     lcd_draw_filled_rectangle(
         0, 0,               /* 左上角坐标 (x, y) */
@@ -1431,7 +1433,7 @@ void register_account_box()
                 if ((input_x >= 800 && input_x <= 900 && input_y >= 51 && input_y <= 111) || 
                     (input_x >= 876 && input_x <= 1024 && input_y >= 400 && input_y <= 600)) {  /* 确认按钮和确认键 */
                     /* 处理确认按钮点击事件 */ 
-                    show_bmp_to_lcd("login_2.bmp");    /* 加载背景图层 */
+                    show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
                     if (strlen(user_info.account_number_buf) == 0) {
                         /* 账号背景文本框 */
                         lcd_draw_filled_rectangle(
@@ -1790,7 +1792,7 @@ void register_password_box()
         printf("初始化失败。\n");
         return;
     }
-    show_bmp_to_lcd("login_2.bmp");    /* 加载背景图层 */
+    show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
     // 绘制账号输入文本框背景
     lcd_draw_filled_rectangle(
         0, 0,               /* 左上角坐标 (x, y) */
@@ -1899,7 +1901,7 @@ void register_password_box()
                 if ((input_x >= 800 && input_x <= 900 && input_y >= 51 && input_y <= 111) ||
                     (input_x >= 876 && input_x <= 1024 && input_y >= 400 && input_y <= 600)) {
                     // 处理确认按钮点击事件
-                    show_bmp_to_lcd("login_2.bmp");    //测试debug
+                    show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    //测试debug
                     if (strlen(user_info.account_number_buf) == 0) {
                         /* 账号输入文本框 */
                         lcd_render_text_with_box(
@@ -2258,15 +2260,16 @@ void register_password_box()
 
 void home_fun() {
     /* 显示桌面 */  
-    show_bmp_to_lcd("home.bmp");
+    show_bmp_to_lcd("home.bmp", 0, 0, 1024, 600);
+    show_bmp_to_lcd("1.bmp", 200, 200, 40, 40);
     while(1) {
         ts_fun();
         if (input_x >= 418 && input_x <= 494 && input_y >= 259 && input_y <= 331) {
-            show_bmp_to_lcd("logo.bmp");
+            show_bmp_to_lcd("logo.bmp", 0, 0, 1024, 600);
             usleep(1000000);
-            show_bmp_to_lcd("anti_addiction.bmp");
+            show_bmp_to_lcd("anti_addiction.bmp", 0, 0, 1024, 600);
             usleep(1000000);
-            show_bmp_to_lcd("login_1.bmp");
+            show_bmp_to_lcd("login_1.bmp", 0, 0, 1024, 600);
             break;
         } else {
             not_open_game_notification();
@@ -2288,13 +2291,13 @@ void login_fun() {
             break;
         } else if (input_x >= 942 && input_x <= 1024 && input_y >= 524 && input_y <= 600) {
             /* 点击到关闭按钮 */
-            show_bmp_to_lcd("login_exit.bmp");
+            show_bmp_to_lcd("login_exit.bmp", 0, 0, 1024, 600);
             while(2) {
                 ts_fun();
                 if (input_x >= 313 && input_x <= 497 && input_y >= 363 && input_y <= 447) {
                     home_fun();
                 } else if (input_x >= 534 && input_x <= 714 && input_y >= 363 && input_y <= 447) {
-                    show_bmp_to_lcd("login_1.bmp"); //  刷新屏幕
+                    show_bmp_to_lcd("login_1.bmp", 0, 0, 1024, 600); //  刷新屏幕
                     login_fun();
                 }
                 break;
@@ -2308,7 +2311,7 @@ void login_fun() {
 void login_boot() 
 {
     /* 进入到登录界面 */
-    show_bmp_to_lcd("login_2.bmp");
+    show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);
     account_password_background_box();
     while (2) {
         ts_fun();
@@ -2359,7 +2362,7 @@ void login_judgment() {
             0                               /* 文本框高度 */
         );
         sleep(3);
-        show_bmp_to_lcd("login_2.bmp"); 
+        show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600); 
         printf("login failed.\n");
         /* 返回上一层 */ 
         memset(user_info.account_number_buf, 0, sizeof(user_info.account_number_buf));
@@ -2389,7 +2392,7 @@ void register_judgment() {
             0                               /* 文本框高度 */
         );
         sleep(3);
-        show_bmp_to_lcd("login_2.bmp"); 
+        show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600); 
         printf("register failed.\n");
         /* 返回上一层 */ 
         memset(user_info.account_number_buf, 0, sizeof(user_info.account_number_buf));
@@ -2399,7 +2402,7 @@ void register_judgment() {
 }
 
 void game_start_home() {
-    show_bmp_to_lcd("1.bmp");
+    show_bmp_to_lcd("1.bmp", 0, 0, 1024, 600);
 }
 
 int main() 
