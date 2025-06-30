@@ -222,7 +222,27 @@ void account_password_background_box()
         25                                  /* 字体大小 */
     );
 
-    show_bmp_to_lcd("show_password.bmp", 290, 200, 40, 40);
+    /* 显示或隐藏密码开关 */
+    int show_hide_password_flags = 0;
+    show_bmp_to_lcd("hide_password.bmp", 448, 315, 40, 40);
+    while (1) {
+        ts_fun();
+        if (input_x >= 450 && input_x <= 495 && input_y >= 322 && input_y <= 360) {
+            /* 切换标志变量 */ 
+            show_hide_password_flags = !show_hide_password_flags; 
+        }
+        switch (show_hide_password_flags) {
+            case 0:
+                show_bmp_to_lcd("hide_password.bmp", 448, 315, 40, 40);
+                break;
+            case 1:
+                show_bmp_to_lcd("show_password.bmp", 448, 315, 40, 40);
+                break;
+            default:
+                break;
+        }
+    }
+    show_bmp_to_lcd("hide_password.bmp", 448, 315, 40, 40);
     /* 清理资源 */
     //lcd_cleanup();    /* 请不要启用，会导致输入开始时无效，并且会导致多种问题，建议后来者覆盖 */
 }
@@ -816,6 +836,7 @@ void input_account_box()
         }
     }
 
+    /* 返回时，可自由选择账号或密码输入 */
     while (2) {
         ts_fun();
         if (input_x >= 104 && input_x <= 290 && input_y >= 248 && input_y <= 300) {
@@ -957,7 +978,7 @@ void input_password_box()
                 if ((input_x >= 800 && input_x <= 900 && input_y >= 51 && input_y <= 111) ||
                     (input_x >= 876 && input_x <= 1024 && input_y >= 400 && input_y <= 600)) {
                     // 处理确认按钮点击事件
-                    show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    //测试debug
+                    show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);   
                     if (strlen(user_info.account_number_buf) == 0) {
                         /* 账号输入文本框 */
                         lcd_render_text_with_box(
@@ -1022,6 +1043,28 @@ void input_password_box()
                             50                        /* 文本框高度 */
                         );
                     }
+
+                    /* 显示或隐藏密码开关 */
+                    int show_hide_password_flags = 0;
+                    show_bmp_to_lcd("hide_password.bmp", 448, 315, 40, 40);
+                    while (1) {
+                        ts_fun();
+                        if (input_x >= 450 && input_x <= 495 && input_y >= 322 && input_y <= 360) {
+                            /* 切换标志变量 */ 
+                            show_hide_password_flags = !show_hide_password_flags; 
+                        }
+                        switch (show_hide_password_flags) {
+                            case 0:
+                                show_bmp_to_lcd("hide_password.bmp", 448, 315, 40, 40);
+                                break;
+                            case 1:
+                                show_bmp_to_lcd("show_password.bmp", 448, 315, 40, 40);
+                                break;
+                            default:
+                                break;
+                        }
+                    }
+
                     break;  /* 不再刷新，结束死循环 */
                 }
                 ts_fun();   //debug
@@ -1290,6 +1333,7 @@ void input_password_box()
         }
     }
 
+    /* 返回时，可自由选择账号或密码输入 */
     while (2) {
         ts_fun();
         if (input_x >= 104 && input_x <= 290 && input_y >= 248 && input_y <= 300) {
@@ -2261,7 +2305,6 @@ void register_password_box()
 void home_fun() {
     /* 显示桌面 */  
     show_bmp_to_lcd("home.bmp", 0, 0, 1024, 600);
-    show_bmp_to_lcd("1.bmp", 200, 200, 40, 40);
     while(1) {
         ts_fun();
         if (input_x >= 418 && input_x <= 494 && input_y >= 259 && input_y <= 331) {
