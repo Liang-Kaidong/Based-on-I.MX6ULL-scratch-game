@@ -8,6 +8,7 @@ Others: Usage requires preservation of original author attribution.
 Log: 1.优化账号注册界面位数的注册逻辑
      2.新增账号注册功能
 bug: 1.部分登录逻辑有误
+     2.密码输入逻辑未与注册界面密码输入一致
 *************************************************************************************************************/
 
 #include <stdio.h>
@@ -305,8 +306,8 @@ void input_account_box()
             if ((input_x >= 800 && input_x <= 900 && input_y >= 51 && input_y <= 111) || 
                 (input_x >= 876 && input_x <= 1024 && input_y >= 400 && input_y <= 600)) {  /* 确认按钮和确认键 */
                 /* 处理确认按钮点击事件 */ 
-                show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
                 if (strlen(user_info.account_number_buf) == 0) {
+                    show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
                     /* 账号背景文本框 */
                     lcd_draw_filled_rectangle(
                         104, 248,       /* 左上角坐标 (x, y) */
@@ -319,7 +320,9 @@ void input_account_box()
                         COLOR_LIGHTGRAY,                    /* 文本颜色 */
                         25                                  /* 字体大小 */
                     );            
-                } else {
+                } else if (strlen(user_info.account_number_buf) <= 12) {
+                    /* 账号不超过12位 */
+                    show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
                     /* 账号输入文本框 */ 
                     lcd_render_text_with_box(
                         user_info.account_number_buf,      /* 文本内容 */
@@ -333,6 +336,26 @@ void input_account_box()
                         386,                     /* 文本框宽度 */
                         50                       /* 文本框高度 */
                     );  
+                } else {
+                    lcd_render_text_with_box(
+                        "账号超过12位，请重新输入！",     /* 文本内容 */
+                        310, 400,                       /* 起始坐标 (x, y) */
+                        COLOR_WHITE,                    /* 文本颜色 */
+                        COLOR_LIGHTGRAY,                /* 文本框背景颜色 */
+                        10,                             /* 文本与文本框边缘的间距 */
+                        BOX_STYLE_ROUNDED,              /* 圆角样式 */
+                        15,                             /* 圆角半径 */
+                        30,                             /* 字体大小 */
+                        0,                              /* 文本框宽度 */
+                        0                               /* 文本框高度 */
+                    );
+                    sleep(3);
+                    login_success_flags = 0;
+                    memset(user_info.account_number_buf, 0, sizeof(user_info.account_number_buf));
+                    memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
+                    memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
+                    input_account_box(); /* 重新输入账号 */
+                    return;
                 }
 
                 /*
@@ -406,6 +429,7 @@ void input_account_box()
                                 return;  /* 强行退出函数，避免死循环 */
                             }
                         } else if (input_x >= 250 && input_x <= 361 && input_y >= 424 && input_y <= 484) {
+                            /* 可在登陆界面期间随时切换注册界面 */
                             memset(user_info.account_number_buf, 0, sizeof(user_info.account_number_buf));
                             memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
                             memset(user_info.hide_password_number_buf, 0, sizeof(user_info.hide_password_number_buf));
@@ -492,10 +516,9 @@ void input_account_box()
                             input_password_box();
                             break;
                         } else if (input_x >= 104 && input_x <= 248 && input_y >= 400 && input_y <= 500) {
+                            login_success_flags = 1;    /* 满足所有输入条件，允许登录 */
                             login_judgment();
-                            if (login_success_flags == 1) {
-                                return;  /* 强行退出函数，避免死循环 */ 
-                            }
+                            return;
                         } else if (input_x >= 250 && input_x <= 361 && input_y >= 424 && input_y <= 484) {
                             memset(user_info.account_number_buf, 0, sizeof(user_info.account_number_buf));
                             memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
@@ -2339,6 +2362,7 @@ void login_judgment() {
         memset(user_info.account_number_buf, 0, sizeof(user_info.account_number_buf));
         memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
         memset(user_info.hide_password_number_buf, 0, sizeof(user_info.hide_password_number_buf));
+        return;
     } else if (strlen(user_info.account_number_buf) == 0 || strlen(user_info.password_number_buf) == 0) {
         /* 账号或密码为空 */
         lcd_render_text_with_box(
@@ -2359,6 +2383,7 @@ void login_judgment() {
         memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
         memset(user_info.hide_password_number_buf, 0, sizeof(user_info.hide_password_number_buf));
         login_boot();
+        return;
     }
 
     /* 清理资源 */ 
@@ -2388,8 +2413,8 @@ void register_judgment() {
 
         /* 2.创建个人文档，此时先判定是否存在，存在返回值-1；不存在就把数据写进去 */
         /* 尝试打开文档（账号），若账号存在，返回值-1 */
-        int fd = open(temp_account_number_buf, O_RDWR | O_CREAT | O_EXCL);
-        if (fd == -1) {
+        int user_data_fd = open(temp_account_number_buf, O_RDWR | O_CREAT | O_EXCL);
+        if (user_data_fd == -1) {
             /* 因为存在该账号，所以返回值-1 */
             printf("该账号已存在，请重新注册\n");
             lcd_render_text_with_box(
@@ -2426,7 +2451,7 @@ void register_judgment() {
         * strlen(user_data_buf) 函数会计算user_data_buf中字符串的长度（不包含字符串结束符 '\0'），
         * 从而确定 write 函数需要从 buf1 中读取并写入文件的字节数量。 
         */
-        write(fd, user_data_buf, strlen(user_data_buf));
+        write(user_data_fd, user_data_buf, strlen(user_data_buf));
         lcd_render_text_with_box(
             "注册成功，返回登录界面",         /* 文本内容 */
             350, 400,                       /* 起始坐标 (x, y) */
@@ -2446,7 +2471,7 @@ void register_judgment() {
         memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
         memset(user_info.hide_password_number_buf, 0, sizeof(user_info.hide_password_number_buf));
         register_success_flags = 0; /* 重置注册成功标志位 */
-        close(fd);
+        close(user_data_fd);
         login_boot();
         return;
     } else if (register_success_flags == 0) {
