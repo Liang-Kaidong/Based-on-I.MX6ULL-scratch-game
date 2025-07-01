@@ -1,19 +1,11 @@
 /*************************************************************************************************************
 File name: p.c
 Author: KD
-Version: V_2.5
+Version: V_2.6
 Build date: 2024-06-30
 Description: NONE
 Others: Usage requires preservation of original author attribution.
-Log: 1.新增首次登录页面密码显示隐藏开关
-     2.移除实体键盘输入账号与密码的功能
-     3.修复部分输入的逻辑错误
-     4.修复登录账号的已知逻辑错误
-     5.修复因未初始化字库导致屏幕提示异常
-     6.修复密码显示隐藏开关，正确显示隐藏密码
-     7.修复密码的显示与隐藏导致无法正常登录的问题
-     8.修复注册与登录屏幕无提示的问题
-     9.修复注册账号的已知逻辑错误
+Log: 1.优化账号注册界面位数的注册逻辑
 bug: 1.账号注册页面暂时未实现账号注册，在下一个版本更进更新
 *************************************************************************************************************/
 
@@ -45,7 +37,7 @@ typedef struct
     char password_number_buf[128];      /* 用于存储密码的数组 */
     char hide_password_number_buf[128]; /* 用于隐藏密码的数组 */
 } UserInfo;
-UserInfo user_info = {{0}, {0}}; // 初始化用户信息结构体 
+UserInfo user_info = {{0}, {0}, {0}}; // 初始化用户信息结构体 
 
 /* 全局向前声明各函数 */ 
 void input_account_box();
@@ -1193,8 +1185,8 @@ void register_account_box()
             if ((input_x >= 800 && input_x <= 900 && input_y >= 51 && input_y <= 111) || 
                 (input_x >= 876 && input_x <= 1024 && input_y >= 400 && input_y <= 600)) {  /* 确认按钮和确认键 */
                 /* 处理确认按钮点击事件 */ 
-                show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
                 if (strlen(user_info.account_number_buf) == 0) {
+                    show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
                     /* 账号背景文本框 */
                     lcd_draw_filled_rectangle(
                         104, 248,       /* 左上角坐标 (x, y) */
@@ -1207,7 +1199,9 @@ void register_account_box()
                         COLOR_LIGHTGRAY,                    /* 文本颜色 */
                         25                                  /* 字体大小 */
                     );            
-                } else {
+                } else if (strlen(user_info.account_number_buf) <= 12) {
+                    /* 账号不超过12位 */
+                    show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
                     /* 账号输入文本框 */ 
                     lcd_render_text_with_box(
                         user_info.account_number_buf,      /* 文本内容 */
@@ -1221,6 +1215,26 @@ void register_account_box()
                         386,                     /* 文本框宽度 */
                         50                       /* 文本框高度 */
                     );  
+                } else {
+                    lcd_render_text_with_box(
+                        "账号超过12位，请重新注册！",     /* 文本内容 */
+                        310, 400,                       /* 起始坐标 (x, y) */
+                        COLOR_WHITE,                    /* 文本颜色 */
+                        COLOR_LIGHTGRAY,                /* 文本框背景颜色 */
+                        10,                             /* 文本与文本框边缘的间距 */
+                        BOX_STYLE_ROUNDED,              /* 圆角样式 */
+                        15,                             /* 圆角半径 */
+                        30,                             /* 字体大小 */
+                        0,                              /* 文本框宽度 */
+                        0                               /* 文本框高度 */
+                    );
+                    sleep(3);
+                    register_success_flags = 0;
+                    memset(user_info.account_number_buf, 0, sizeof(user_info.account_number_buf));
+                    memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
+                    memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
+                    register_account_box(); /* 重新注册 */
+                    return;
                 }
 
                 /*
@@ -1648,53 +1662,100 @@ void register_password_box()
             if ((input_x >= 800 && input_x <= 900 && input_y >= 51 && input_y <= 111) || 
                 (input_x >= 876 && input_x <= 1024 && input_y >= 400 && input_y <= 600)) {  /* 确认按钮和确认键 */
                 /* 处理确认按钮点击事件 */ 
-                show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
                 if (strlen(user_info.account_number_buf) == 0) {
-                    /* 账号背景文本框 */
-                    lcd_draw_filled_rectangle(
-                        104, 248,       /* 左上角坐标 (x, y) */
-                        386, 50,        /* 矩形宽度和高度 */
-                        COLOR_WHITE     /* 填充颜色 */
-                    );
-                    lcd_render_text(
-                        "请输入要注册的账号",                       /* 文本内容 */
-                        104, 260,                           /* 起始坐标 (x, y) */
-                        COLOR_LIGHTGRAY,                    /* 文本颜色 */
-                        25                                  /* 字体大小 */
-                    );            
+                    if (strlen(user_info.password_number_buf) >= 8 && strlen(user_info.password_number_buf) <= 12) {
+                        /* 仅当密码符合条件时才显示图层 */
+                        show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
+                        /* 账号背景文本框 */
+                        lcd_draw_filled_rectangle(
+                            104, 248,       /* 左上角坐标 (x, y) */
+                            386, 50,        /* 矩形宽度和高度 */
+                            COLOR_WHITE     /* 填充颜色 */
+                        );
+                        lcd_render_text(
+                            "请输入要注册的账号",                       /* 文本内容 */
+                            104, 260,                           /* 起始坐标 (x, y) */
+                            COLOR_LIGHTGRAY,                    /* 文本颜色 */
+                            25                                  /* 字体大小 */
+                        );    
+                    } else {
+                        /* 密码不符合条件，屏幕开始提示，不显示图层 */
+                        /* 账号背景文本框 */
+                        lcd_draw_filled_rectangle(
+                            0, 0,       /* 左上角坐标 (x, y) */
+                            1, 1,        /* 矩形宽度和高度 */
+                            COLOR_WHITE     /* 填充颜色 */
+                        );
+                    }
                 } else {
-                    /* 账号输入文本框 */ 
-                    lcd_render_text_with_box(
-                        user_info.account_number_buf,      /* 文本内容 */
-                        104, 248,                /* 起始坐标 (x, y) */
-                        COLOR_BLACK,             /* 文本颜色 */ 
-                        COLOR_WHITE,             /* 文本框背景颜色 */ 
-                        0,                       /* 文本与文本框边缘的间距 */ 
-                        BOX_STYLE_RECTANGLE,     /* 矩形样式 */ 
-                        0,                       /* 矩形样式不需要半径 */
-                        50,                      /* 字体大小 */
-                        386,                     /* 文本框宽度 */
-                        50                       /* 文本框高度 */
-                    );  
+                    if (strlen(user_info.password_number_buf) >= 8 && strlen(user_info.password_number_buf) <= 12) {
+                        /* 仅当密码符合条件时才显示图层 */
+                        show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
+                        /* 账号背景文本框 */
+                        lcd_draw_filled_rectangle(
+                            104, 248,       /* 左上角坐标 (x, y) */
+                            386, 50,        /* 矩形宽度和高度 */
+                            COLOR_WHITE     /* 填充颜色 */
+                        );
+                        /* 账号输入文本框 */ 
+                        lcd_render_text_with_box(
+                            user_info.account_number_buf,      /* 文本内容 */
+                            104, 248,                /* 起始坐标 (x, y) */
+                            COLOR_BLACK,             /* 文本颜色 */ 
+                            COLOR_WHITE,             /* 文本框背景颜色 */ 
+                            0,                       /* 文本与文本框边缘的间距 */ 
+                            BOX_STYLE_RECTANGLE,     /* 矩形样式 */ 
+                            0,                       /* 矩形样式不需要半径 */
+                            50,                      /* 字体大小 */
+                            386,                     /* 文本框宽度 */
+                            50                       /* 文本框高度 */
+                        );  
+                    } else {
+                        /* 密码不符合条件，屏幕提示，不显示图层 */
+                        //show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);
+                        /* 账号背景文本框 */
+                        lcd_draw_filled_rectangle(
+                            0, 0,       /* 左上角坐标 (x, y) */
+                            1, 1,        /* 矩形宽度和高度 */
+                            COLOR_WHITE     /* 填充颜色 */
+                        );
+                    }
                 }
 
                 /* 显示或隐藏密码开关 */
                 int show_hide_password_flags = 0;
-                /* 密码背景文本框 */
-                lcd_draw_filled_rectangle(
-                    104, 310,       /* 左上角坐标 (x, y) */
-                    386, 50,        /* 矩形宽度和高度 */
-                    COLOR_WHITE     /* 填充颜色 */
-                );
-
+                
                 /* 空密码时 */
                 if (strlen(user_info.password_number_buf) == 0) {
+                    show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
+                    /* 密码背景文本框 */
+                    lcd_draw_filled_rectangle(
+                        104, 310,       /* 左上角坐标 (x, y) */
+                        386, 50,        /* 矩形宽度和高度 */
+                        COLOR_WHITE     /* 填充颜色 */
+                    );
                     lcd_render_text(
                         "请输入不少于8位数的密码",            /* 文本内容 */
                         104, 323,               /* 起始坐标 (x, y) */
                         COLOR_LIGHTGRAY,        /* 文本颜色 */
                         25                      /* 字体大小 */
                     );
+                    /* 单独账号渲染,防止界面紊乱 */
+                    if (strlen(user_info.account_number_buf) == 0) {
+                        /* 账号背景文本框 */
+                        lcd_draw_filled_rectangle(
+                            104, 248,       /* 左上角坐标 (x, y) */
+                            386, 50,        /* 矩形宽度和高度 */
+                            COLOR_WHITE     /* 填充颜色 */
+                        );
+                        lcd_render_text(
+                            "请输入要注册的账号",                       /* 文本内容 */
+                            104, 260,                           /* 起始坐标 (x, y) */
+                            COLOR_LIGHTGRAY,                    /* 文本颜色 */
+                            25                                  /* 字体大小 */
+                        );
+                    }
+                    
                     show_bmp_to_lcd("hide_password.bmp", 448, 315, 40, 40);
                     while (2) {
                         ts_fun();
@@ -1763,8 +1824,15 @@ void register_password_box()
                     break;
                 }
 
-                /* 非空密码时 */
-                if (strlen(user_info.password_number_buf) != 0) {
+                /* 非空密码时 密码位数：8-12 */
+                if (strlen(user_info.password_number_buf) >= 8 && strlen(user_info.password_number_buf) <= 12) {
+                    //show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
+                    /* 密码背景文本框 */
+                    lcd_draw_filled_rectangle(
+                        104, 310,       /* 左上角坐标 (x, y) */
+                        386, 50,        /* 矩形宽度和高度 */
+                        COLOR_WHITE     /* 填充颜色 */
+                    );
                     lcd_draw_filled_rectangle(
                         104, 310,       /* 左上角坐标 (x, y) */
                         386, 50,        /* 矩形宽度和高度 */
@@ -1864,6 +1932,27 @@ void register_password_box()
                             return;  /* 强行退出函数，避免死循环 */
                         }
                     }
+                } else {    
+                    /* 密码位数小于8或大于12 */
+                    lcd_render_text_with_box(
+                        "密码不符合要求，请重新输入8-12位密码！",          /* 文本内容 */
+                        233, 400,                       /* 起始坐标 (x, y) */
+                        COLOR_WHITE,                    /* 文本颜色 */
+                        COLOR_LIGHTGRAY,                /* 文本框背景颜色 */
+                        10,                             /* 文本与文本框边缘的间距 */
+                        BOX_STYLE_ROUNDED,              /* 圆角样式 */
+                        15,                             /* 圆角半径 */
+                        30,                             /* 字体大小 */
+                        0,                              /* 文本框宽度 */
+                        0                               /* 文本框高度 */
+                    );
+                    sleep(3);
+                    register_success_flags = 0;
+                    memset(user_info.account_number_buf, 0, sizeof(user_info.account_number_buf));
+                    memset(user_info.hide_password_number_buf, 0, sizeof(user_info.hide_password_number_buf));
+                    memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
+                    register_password_box();
+                    return;
                 }
                 break;
             }
@@ -2087,7 +2176,7 @@ void login_fun() {
         if (input_x >= 399 && input_x <= 621 && input_y >= 385 && input_y <= 490) {
             /* 进入登录引导界面 */
             login_boot();
-            break;
+            return; /* 强制退出函数，防死循环 */
         } else if (input_x >= 942 && input_x <= 1024 && input_y >= 524 && input_y <= 600) {
             /* 点击到关闭按钮 */
             show_bmp_to_lcd("login_exit.bmp", 0, 0, 1024, 600);
@@ -2095,13 +2184,13 @@ void login_fun() {
                 ts_fun();
                 if (input_x >= 313 && input_x <= 497 && input_y >= 363 && input_y <= 447) {
                     home_fun();
+                    break;
                 } else if (input_x >= 534 && input_x <= 714 && input_y >= 363 && input_y <= 447) {
                     show_bmp_to_lcd("login_1.bmp", 0, 0, 1024, 600); //  刷新屏幕
                     login_fun();
+                    return; /* 强制退出函数，防死循环 */
                 }
-                break;
             }
-            break;
         }
     }
 }
@@ -2155,10 +2244,16 @@ void login_boot()
 
 /* 注册界面引导 */
 void register_boot() 
-{
+{   
     /* 进入到注册界面 */
     show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);
     register_background_box();
+
+    /* 初始化字库 */
+    if (lcd_init("/dev/fb0", "simkai.ttf") != 0) {
+        printf("初始化失败。\n");
+        return;
+    }
 
     // 标志变量，0 表示隐藏密码，1 表示显示密码，默认隐藏
     int show_hide_password_flags = 0; 
@@ -2205,6 +2300,9 @@ void register_boot()
             break;  
         }
     }
+
+    /* 清理资源 */ 
+    lcd_cleanup();
 }
 
 /* 登录判断 */
