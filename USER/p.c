@@ -1,14 +1,14 @@
 /*************************************************************************************************************
 File name: p.c
 Author: KD
-Version: V_3.0
-Build date: 2024-07-01
+Version: V_3.1
+Build date: 2024-07-02
 Description: NONE
 Others: Usage requires preservation of original author attribution.
 Log: 1.优化账号注册界面位数的注册逻辑
      2.新增账号注册功能
+     3.优化账号登录界面位数的登录逻辑
 bug: 1.部分登录逻辑有误
-     2.密码输入逻辑未与注册界面密码输入一致
 *************************************************************************************************************/
 
 #include <stdio.h>
@@ -757,54 +757,101 @@ void input_password_box()
             // 判断是否点击了确认按钮
             if ((input_x >= 800 && input_x <= 900 && input_y >= 51 && input_y <= 111) || 
                 (input_x >= 876 && input_x <= 1024 && input_y >= 400 && input_y <= 600)) {  /* 确认按钮和确认键 */
-                /* 处理确认按钮点击事件 */ 
-                show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
+                /* 处理确认按钮点击事件 */
                 if (strlen(user_info.account_number_buf) == 0) {
-                    /* 账号背景文本框 */
-                    lcd_draw_filled_rectangle(
-                        104, 248,       /* 左上角坐标 (x, y) */
-                        386, 50,        /* 矩形宽度和高度 */
-                        COLOR_WHITE     /* 填充颜色 */
-                    );
-                    lcd_render_text(
-                        "请输入账号",                       /* 文本内容 */
-                        104, 260,                           /* 起始坐标 (x, y) */
-                        COLOR_LIGHTGRAY,                    /* 文本颜色 */
-                        25                                  /* 字体大小 */
-                    );            
+                    if (strlen(user_info.password_number_buf) >= 8 && strlen(user_info.password_number_buf) <= 12) {
+                        /* 仅当密码符合条件时才显示图层 */
+                        show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
+                        /* 账号背景文本框 */
+                        lcd_draw_filled_rectangle(
+                            104, 248,       /* 左上角坐标 (x, y) */
+                            386, 50,        /* 矩形宽度和高度 */
+                            COLOR_WHITE     /* 填充颜色 */
+                        );
+                        lcd_render_text(
+                            "请输入账号",                       /* 文本内容 */
+                            104, 260,                           /* 起始坐标 (x, y) */
+                            COLOR_LIGHTGRAY,                    /* 文本颜色 */
+                            25                                  /* 字体大小 */
+                        );
+                    } else {
+                        /* 密码不符合条件，屏幕开始提示，不显示图层 */
+                        /* 账号背景文本框 */
+                        lcd_draw_filled_rectangle(
+                            0, 0,       /* 左上角坐标 (x, y) */
+                            1, 1,        /* 矩形宽度和高度 */
+                            COLOR_WHITE     /* 填充颜色 */
+                        );
+                    }           
                 } else {
-                    /* 账号输入文本框 */ 
-                    lcd_render_text_with_box(
-                        user_info.account_number_buf,      /* 文本内容 */
-                        104, 248,                /* 起始坐标 (x, y) */
-                        COLOR_BLACK,             /* 文本颜色 */ 
-                        COLOR_WHITE,             /* 文本框背景颜色 */ 
-                        0,                       /* 文本与文本框边缘的间距 */ 
-                        BOX_STYLE_RECTANGLE,     /* 矩形样式 */ 
-                        0,                       /* 矩形样式不需要半径 */
-                        50,                      /* 字体大小 */
-                        386,                     /* 文本框宽度 */
-                        50                       /* 文本框高度 */
-                    );  
+                    if (strlen(user_info.password_number_buf) >= 8 && strlen(user_info.password_number_buf) <= 12) {
+                        /* 仅当密码符合条件时才显示图层 */
+                        show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
+                        /* 账号背景文本框 */
+                        lcd_draw_filled_rectangle(
+                            104, 248,       /* 左上角坐标 (x, y) */
+                            386, 50,        /* 矩形宽度和高度 */
+                            COLOR_WHITE     /* 填充颜色 */
+                        );
+                        /* 账号输入文本框 */ 
+                        lcd_render_text_with_box(
+                            user_info.account_number_buf,      /* 文本内容 */
+                            104, 248,                /* 起始坐标 (x, y) */
+                            COLOR_BLACK,             /* 文本颜色 */ 
+                            COLOR_WHITE,             /* 文本框背景颜色 */ 
+                            0,                       /* 文本与文本框边缘的间距 */ 
+                            BOX_STYLE_RECTANGLE,     /* 矩形样式 */ 
+                            0,                       /* 矩形样式不需要半径 */
+                            50,                      /* 字体大小 */
+                            386,                     /* 文本框宽度 */
+                            50                       /* 文本框高度 */
+                        );
+                    } else {
+                        /* 密码不符合条件，屏幕提示，不显示图层 */
+                        //show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);
+                        /* 账号背景文本框 */
+                        lcd_draw_filled_rectangle(
+                            0, 0,       /* 左上角坐标 (x, y) */
+                            1, 1,        /* 矩形宽度和高度 */
+                            COLOR_WHITE     /* 填充颜色 */
+                        );
+                    }
                 }
 
                 /* 显示或隐藏密码开关 */
                 int show_hide_password_flags = 0;
-                /* 密码背景文本框 */
-                lcd_draw_filled_rectangle(
-                    104, 310,       /* 左上角坐标 (x, y) */
-                    386, 50,        /* 矩形宽度和高度 */
-                    COLOR_WHITE     /* 填充颜色 */
-                );
 
                 /* 空密码时 */
                 if (strlen(user_info.password_number_buf) == 0) {
+                    show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
+                    /* 密码背景文本框 */
+                    lcd_draw_filled_rectangle(
+                        104, 310,       /* 左上角坐标 (x, y) */
+                        386, 50,        /* 矩形宽度和高度 */
+                        COLOR_WHITE     /* 填充颜色 */
+                    );
                     lcd_render_text(
                         "请输入密码",            /* 文本内容 */
                         104, 323,               /* 起始坐标 (x, y) */
                         COLOR_LIGHTGRAY,        /* 文本颜色 */
                         25                      /* 字体大小 */
                     );
+                    /* 单独账号渲染,防止界面紊乱 */
+                    if (strlen(user_info.account_number_buf) == 0) {
+                        /* 账号背景文本框 */
+                        lcd_draw_filled_rectangle(
+                            104, 248,       /* 左上角坐标 (x, y) */
+                            386, 50,        /* 矩形宽度和高度 */
+                            COLOR_WHITE     /* 填充颜色 */
+                        );
+                        lcd_render_text(
+                            "请输入要注册的账号",                       /* 文本内容 */
+                            104, 260,                           /* 起始坐标 (x, y) */
+                            COLOR_LIGHTGRAY,                    /* 文本颜色 */
+                            25                                  /* 字体大小 */
+                        );
+                    }
+
                     show_bmp_to_lcd("hide_password.bmp", 448, 315, 40, 40);
                     while (2) {
                         ts_fun();
@@ -845,11 +892,13 @@ void input_password_box()
                             input_password_box();
                             break;
                         } else if (input_x >= 104 && input_x <= 248 && input_y >= 400 && input_y <= 500) {
+                            login_success_flags = 0;    /* 空账号与密码强制不允许登录 */
                             login_judgment();
                             if (login_success_flags == 1) {
                                 return;  /* 强行退出函数，避免死循环 */
                             }
                         } else if (input_x >= 250 && input_x <= 361 && input_y >= 424 && input_y <= 484) {
+                            /* 点击注册按钮，可强行进入注册界面 */
                             memset(user_info.account_number_buf, 0, sizeof(user_info.account_number_buf));
                             memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
                             memset(user_info.hide_password_number_buf, 0, sizeof(user_info.hide_password_number_buf));
@@ -860,8 +909,9 @@ void input_password_box()
                     break;
                 }
 
-                /* 非空密码时 */
-                if (strlen(user_info.password_number_buf) != 0) {
+                /* 非空密码时 密码位数：8-12 */
+                if (strlen(user_info.password_number_buf) >= 8 && strlen(user_info.password_number_buf) <= 12) {
+                    /* 密码背景文本框 */
                     lcd_draw_filled_rectangle(
                         104, 310,       /* 左上角坐标 (x, y) */
                         386, 50,        /* 矩形宽度和高度 */
@@ -936,11 +986,13 @@ void input_password_box()
                             input_password_box();
                             break;
                         } else if (input_x >= 104 && input_x <= 248 && input_y >= 400 && input_y <= 500) {
+                            login_success_flags = 1;    /* 满足输入条件，允许登录 */
                             login_judgment();
                             if (login_success_flags == 1) {
                                 return;  /* 强行退出函数，避免死循环 */ 
                             }
                         } else if (input_x >= 250 && input_x <= 361 && input_y >= 424 && input_y <= 484) {
+                            /* 点击到注册按钮 */
                             memset(user_info.account_number_buf, 0, sizeof(user_info.account_number_buf));
                             memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
                             memset(user_info.hide_password_number_buf, 0, sizeof(user_info.hide_password_number_buf));
@@ -948,6 +1000,27 @@ void input_password_box()
                             return;
                         }
                     }
+                } else {
+                    /* 密码位数小于8或大于12 */
+                    lcd_render_text_with_box(
+                        "密码不符合要求，请重新输入8-12位密码！",          /* 文本内容 */
+                        233, 400,                       /* 起始坐标 (x, y) */
+                        COLOR_WHITE,                    /* 文本颜色 */
+                        COLOR_LIGHTGRAY,                /* 文本框背景颜色 */
+                        10,                             /* 文本与文本框边缘的间距 */
+                        BOX_STYLE_ROUNDED,              /* 圆角样式 */
+                        15,                             /* 圆角半径 */
+                        30,                             /* 字体大小 */
+                        0,                              /* 文本框宽度 */
+                        0                               /* 文本框高度 */
+                    );
+                    sleep(3);
+                    login_success_flags = 0;
+                    memset(user_info.account_number_buf, 0, sizeof(user_info.account_number_buf));
+                    memset(user_info.hide_password_number_buf, 0, sizeof(user_info.hide_password_number_buf));
+                    memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
+                    input_password_box();
+                    return;
                 }
                 break;
             }
@@ -2259,18 +2332,7 @@ void login_boot()
         } else {
             continue;
         }
-
-        /* 
-        * 此处写break是因为当继续停留在login_boot()函数时，
-        * 若成功进入游戏会进这里的死循环
-        * 
-        * 解决方法，设置登录成功标记位，若登陆成功，break;
-        * 此处就是为了解决比如显示隐藏密码不与其他input函数并存并可以重复多按，
-        * 若登录成功也不会陷入这里的死循环
-        */
-        if (login_success_flags == 1) {
-            break;  // 直接返回，让 login_fun() 决定下一步操作
-        }
+        return;
     }
 }
 
@@ -2343,7 +2405,7 @@ void login_judgment() {
         return;
     }
     /* 满足所有登录条件时 */
-    if (strlen(user_info.account_number_buf) != 0 && strlen(user_info.password_number_buf) != 0) {
+    if (login_success_flags == 1) {
         printf("login sucessful.\n");
         lcd_render_text_with_box(
             "登录成功，请尽情游玩~",          /* 文本内容 */
@@ -2358,12 +2420,12 @@ void login_judgment() {
             0                               /* 文本框高度 */
         );
         sleep(3);
-        login_success_flags = 1;  /* 登录成功，标记位置1。仅该条件成立时，才可进行mian（）的下一步操作。 */
         memset(user_info.account_number_buf, 0, sizeof(user_info.account_number_buf));
         memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
         memset(user_info.hide_password_number_buf, 0, sizeof(user_info.hide_password_number_buf));
+        login_success_flags = 0;    /* 重置登录成功标志位 */
         return;
-    } else if (strlen(user_info.account_number_buf) == 0 || strlen(user_info.password_number_buf) == 0) {
+    } else if (login_success_flags == 0) {
         /* 账号或密码为空 */
         lcd_render_text_with_box(
             "账号或密码为空，请重新登录",     /* 文本内容 */
@@ -2379,6 +2441,13 @@ void login_judgment() {
         );
         sleep(3);
         /* 返回上一层 */ 
+        memset(user_info.account_number_buf, 0, sizeof(user_info.account_number_buf));
+        memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
+        memset(user_info.hide_password_number_buf, 0, sizeof(user_info.hide_password_number_buf));
+        login_boot();
+        return;
+    } else {
+        /* 返回上一层 */
         memset(user_info.account_number_buf, 0, sizeof(user_info.account_number_buf));
         memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
         memset(user_info.hide_password_number_buf, 0, sizeof(user_info.hide_password_number_buf));
