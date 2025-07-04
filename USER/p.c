@@ -1,15 +1,15 @@
 /*************************************************************************************************************
 File name: p.c
 Author: KD
-Version: V_3.2
-Build date: 2024-07-03
+Version: V_4.1
+Build date: 2024-07-04
 Description: NONE
 Others: Usage requires preservation of original author attribution.
 Log: 1.优化账号注册界面位数的注册逻辑
      2.新增账号注册功能
      3.新增账号冻结功能
-bug: 1.部分登录逻辑有误
-     2.仍有部分登录或注册存在逻辑错误
+bug: 
+     1.部分函数没有清理lcd资源
 *************************************************************************************************************/
 
 #include <stdio.h>
@@ -2395,95 +2395,147 @@ void register_boot()
 
 /* 登录判断 */ 
 void login_judgment() {
-    // 存储文件中账户信息的结构体
+    /* 初始化字库 */ 
+    if (lcd_init("/dev/fb0", "simkai.ttf") != 0) {
+        printf("初始化失败。\n");
+        return;
+    }
+
+    /* 临时存储登录信息 */ 
     struct {
         char account_number_buf[128];      /* 存储的账号 */
         char password_number_buf[128];     /* 存储的密码 */
-        char account_status[20];        /* 账户状态：lock/unlock */
-        int error_count;        /* 密码错误次数 */
+        char account_status[20];           /* 账户状态：lock/unlock */
+        int error_count;                   /* 密码错误次数 */
     } login_user_info = {{0}, {0}, {0}, 0};
     
     /* 存放用户输入的账号（用于判断是否存在该用户） */
     char temp_account_number_buf[128] = {0};
     /* 存放拼接后的账号 */
     sprintf(temp_account_number_buf, "%s.txt", user_info.account_number_buf);
-    
     /* 尝试打开文档（账号），若账号不存在，返回值-1 */
     int user_data_fd = open(temp_account_number_buf, O_RDONLY);
     if (user_data_fd == -1) {
         /* 账号不存在处理 */
-        lcd_render_text_with_box("该账号不存在，请重新输入", 310, 400, 
-                               COLOR_WHITE, COLOR_LIGHTGRAY, 10, 
-                               BOX_STYLE_ROUNDED, 15, 30, 0, 0);
+        lcd_render_text_with_box("该账号不存在，请重新输入", 
+                                 310, 400, 
+                                 COLOR_WHITE, 
+                                 COLOR_LIGHTGRAY, 
+                                 10, 
+                                 BOX_STYLE_ROUNDED, 
+                                 15, 
+                                 30, 
+                                 0, 
+                                 0
+                                );
         sleep(3);
-        memset(user_info.account_number_buf, 0, sizeof(user_info.account_number_buf));
-        memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
-        memset(user_info.hide_password_number_buf, 0, sizeof(user_info.hide_password_number_buf));
+        memset(&user_info, 0, sizeof(user_info));
+        memset(temp_account_number_buf, 0, sizeof(temp_account_number_buf));
         login_boot();
         return;
     }
     
     /* 读取账户信息 */
-    char buffer[1024] = {0};
-    ssize_t bytes_read = read(user_data_fd, buffer, sizeof(buffer) - 1);
+    char user_data_buf[1024] = {0};
+    /*  
+    * read(int fd, void *buf, size_t count);
+    * conut指定最多读取的字节数，最多读取128-1，预留一个字节给字符串结束符'\0',
+    * 确保后续能把user_data_buf当作字符串处理。
+    * 
+    * ssize_t:read函数返回一个ssize_t类型的值bytes_read，用于表示实际读取的字节数。
+    */
+    ssize_t bytes_read = read(user_data_fd, user_data_buf, sizeof(user_data_buf) - 1);
     close(user_data_fd);
     
+    /* 解析user_data_buf的数据 */
     if (bytes_read > 0) {
-        // 解析第一行：account:A,password:AAAAAAAA
-        char *line1 = strtok(buffer, "\n");
+        /* 解析第一行：account:A,password:AAAAAAAA 以换行符进行分割 */ 
+        char *line1 = strtok(user_data_buf, "\n");  
         if (line1) {
-            // 提取账号和密码
+            /* 
+            * 查找账号和密码 
+            * char *strstr(const char *haystack, const char *needle);
+            * haystack：要搜索的字符串。needle：要查找的子字符串。
+            */ 
             char *account_ptr = strstr(line1, "account:");
             char *password_ptr = strstr(line1, "password:");
             
             if (account_ptr && password_ptr) {
-                // 偏移到实际数据位置
+                /* account_ptr与password_ptr皆不为NULL，即找到时 */
+                /* 偏移到实际数据位置account:^XXXXX,password:^XXXXX ^:偏移到这个位置 */ 
                 account_ptr += strlen("account:");
                 password_ptr += strlen("password:");
                 
-                // 提取账号（确保字符串正确结束）
+                /* 提取账号 */ 
                 char *comma = strchr(account_ptr, ',');
                 if (comma) {
+                    /* 
+                    * 例如comma找到的位置是account:XXXXX^,
+                    * 例如account找到的位置是account:^XXXXX,
+                    * 那么账号就是comma-account_ptr,即XXXXX=len。
+                    */
                     size_t len = comma - account_ptr;
+                    /* 
+                    * strncpy将account_ptr开始的len个字符，
+                    * 复制到login_user_info.account_number_buf中。
+                    * 
+                    * 由于strncpy不会自动添加字符串结束符'\0'，
+                    * login_user_info.account_number_buf[len]位置添加'\0'。
+                    */
                     strncpy(login_user_info.account_number_buf, account_ptr, len);
-                    login_user_info.account_number_buf[len] = '\0'; // 手动添加字符串结束符
+                    login_user_info.account_number_buf[len] = '\0'; /* 手动添加字符串结束符 */ 
                 } else {
-                    // 处理没有逗号的情况
+                    /* 
+                    * 处理没有逗号的情况
+                    * strncpy将account_ptr开始的最多sizeof(login_user_info.account_number_buf)-1个字符，
+                    * 复制到login_user_info.account_number_buf中。
+                    */ 
                     strncpy(login_user_info.account_number_buf, account_ptr, sizeof(login_user_info.account_number_buf) - 1);
                     login_user_info.account_number_buf[sizeof(login_user_info.account_number_buf) - 1] = '\0';
                 }
                 
-                // 提取密码（直到行尾）
+                /* 提取密码（直到行尾） */ 
                 strncpy(login_user_info.password_number_buf, password_ptr, sizeof(login_user_info.password_number_buf) - 1);
                 login_user_info.password_number_buf[sizeof(login_user_info.password_number_buf) - 1] = '\0';
                 
-                // 尝试读取第二行（状态和错误次数）
+                /* 解析第二行 用户状态以及密码输入错误次数 */ 
                 char *line2 = strtok(NULL, "\n");
                 if (line2) {
-                    // 解析状态和错误次数（格式：account_state:lock,error_count:3）
-                    char state_prefix[20] = {0};
-                    char error_prefix[20] = {0};
-                    char state_value[10] = {0};
+                    /* 解析状态和错误次数 例：account_state:lock,error_count:3 */ 
+                    char state_prefix[20] = {0};    /* 存储账户状态的前缀 */
+                    char error_prefix[20] = {0};    /* 存储错误次数的前缀 */
+                    char state_value[10] = {0};     /* 存储账户状态的值 */
                     
                     if (sscanf(line2, "%19[^:]:%9[^,],%19[^:]:%d", 
-                              state_prefix, state_value, error_prefix, &login_user_info.error_count) >= 3) {
-                        // 验证前缀是否匹配预期
+                        state_prefix, state_value, error_prefix, &login_user_info.error_count) >= 3) {
+                        /* 
+                        * int sscanf(const char *str, const char *format, ...);
+                        * str：要读取数据的源字符串。 format：格式控制字符串，用于指定读取数据的格式。
+                        *
+                        * sscanf：从字符串line2中按照指定格式读取数据。
+                        * %19[^:]:  读取最多19个非:字符到state_prefix中，遇到:停止。 验证字段是否相等
+                        * [^:]表示读取除:之外的任意字符，直到遇到:字符或者达到宽度限制才停止读取。
+                        * [^:]:最外面的:表示在读取完[^:]部分后，会尝试匹配输入字符串中的:字符，
+                        *      如果匹配成功则继续处理后续格式说明符；若匹配失败，sscanf会停止读取。
+                        */
+                        
+                        /* 验证前缀是否匹配预期 */ 
                         if (strcmp(state_prefix, "account_state") == 0 && 
                             strcmp(error_prefix, "error_count") == 0) {
-                            // 复制状态值（lock/unlock）
+                            /* 复制状态值（lock/unlock） */ 
                             strncpy(login_user_info.account_status, state_value, sizeof(login_user_info.account_status) - 1);
                         } else {
-                            // 前缀不匹配，使用默认值
+                            /* 前缀不匹配，使用默认值 */ 
                             strcpy(login_user_info.account_status, "unlock");
                             login_user_info.error_count = 0;
                         }
                     } else {
-                        // 解析失败，使用默认值
+                        /* 解析失败，使用默认值 */ 
                         strcpy(login_user_info.account_status, "unlock");
                         login_user_info.error_count = 0;
                     }
                 } else {
-                    // 如果没有第二行，初始化为未锁定状态
+                    /* 如果没有第二行，初始化为未锁定状态（注册时已初始化过） */ 
                     strcpy(login_user_info.account_status, "unlock");
                     login_user_info.error_count = 0;
                 }
@@ -2491,10 +2543,21 @@ void login_judgment() {
         }
     }
     
-    // 检查账户是否被锁定
-    bool is_locked = (strcmp(login_user_info.account_status, "lock") == 0);
-    
-    if (is_locked) {
+    /* 检查账户是否被锁定 */ 
+    if (strcmp(login_user_info.account_status, "lock") == 0) {
+        /* 更新账户信息文件（确保锁定状态被保存） */ 
+        user_data_fd = open(temp_account_number_buf, O_WRONLY | O_CREAT | O_TRUNC);
+        if (user_data_fd != -1) {
+            char user_data_buf[1024] = {0};
+            sprintf(user_data_buf, "account:%s,password:%s\n", 
+                    login_user_info.account_number_buf, login_user_info.password_number_buf);
+            sprintf(user_data_buf + strlen(user_data_buf), "account_state:%s,error_count:%d\n", 
+                    login_user_info.account_status, login_user_info.error_count);
+            write(user_data_fd, user_data_buf, strlen(user_data_buf));
+            close(user_data_fd);
+        }
+
+        /* 屏幕提示 */
         lcd_render_text_with_box(
             "账户已锁定，请找回密码！",     
             310, 400,                       
@@ -2507,68 +2570,60 @@ void login_judgment() {
             0,                              
             0                               
         );
-        
-        // 更新账户信息文件（确保锁定状态被保存）
-        user_data_fd = open(temp_account_number_buf, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-        if (user_data_fd != -1) {
-            char buffer[1024] = {0};
-            sprintf(buffer, "account:%s,password:%s\n", 
-                    login_user_info.account_number_buf, login_user_info.password_number_buf);
-            sprintf(buffer + strlen(buffer), "account_state:%s,error_count:%d\n", 
-                    login_user_info.account_status, login_user_info.error_count);
-            write(user_data_fd, buffer, strlen(buffer));
-            close(user_data_fd);
-        }
         sleep(3);
-        printf("account_state:%s,error_count:%d\n",login_user_info.account_status,login_user_info.error_count);
+        printf("account_state:%s,error_count:%d\n",login_user_info.account_status,login_user_info.error_count); /* debug */
 
-        // 清除用户输入数据
-        memset(user_info.account_number_buf, 0, sizeof(user_info.account_number_buf));
-        memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
-        memset(user_info.hide_password_number_buf, 0, sizeof(user_info.hide_password_number_buf));
-        
-        // 清除账户信息（保留文件中的锁定状态）
+        /* 清除用户输入数据 */ 
+        memset(&user_info, 0, sizeof(user_info));
         memset(&login_user_info, 0, sizeof(login_user_info));
         
+        /* 返回登录界面 */
         login_boot();
         return;
     }
     
-    // 验证密码
+    /* 验证密码 */ 
     if (strcmp(login_user_info.password_number_buf, user_info.password_number_buf) == 0) {
-        // 密码正确，重置错误次数
+        /* 密码正确，重置错误次数 */ 
         login_user_info.error_count = 0;
         strcpy(login_user_info.account_status, "unlock");
         
-        // 更新账户信息文件（保存重置后的状态）
-        user_data_fd = open(temp_account_number_buf, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        /* 更新账户信息文件（保存重置后的状态 */ 
+        user_data_fd = open(temp_account_number_buf, O_WRONLY | O_CREAT | O_TRUNC);
         if (user_data_fd != -1) {
-            char buffer[1024] = {0};
-            sprintf(buffer, "account:%s,password:%s\n", 
+            char user_data_buf[1024] = {0};
+            sprintf(user_data_buf, "account:%s,password:%s\n", 
                     login_user_info.account_number_buf, login_user_info.password_number_buf);
-            sprintf(buffer + strlen(buffer), "account_state:%s,error_count:%d\n", 
+            sprintf(user_data_buf + strlen(user_data_buf), "account_state:%s,error_count:%d\n", 
                     login_user_info.account_status, login_user_info.error_count);
-            write(user_data_fd, buffer, strlen(buffer));
+            write(user_data_fd, user_data_buf, strlen(user_data_buf));
             close(user_data_fd);
         }
+
+        lcd_render_text_with_box(
+            "登陆成功，请尽兴游玩~",     
+            310, 400,                       
+            COLOR_WHITE,                    
+            COLOR_LIGHTGRAY,                
+            10,                             
+            BOX_STYLE_ROUNDED,              
+            15,                             
+            30,                             
+            0,                              
+            0                               
+        );
         sleep(3);
-        printf("account_state:%s,error_count:%d\n",login_user_info.account_status,login_user_info.error_count);
+        printf("account_state:%s,error_count:%d\n",login_user_info.account_status,login_user_info.error_count); /* debug */
         
-        // 清除用户输入数据
-        memset(user_info.account_number_buf, 0, sizeof(user_info.account_number_buf));
-        memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
-        memset(user_info.hide_password_number_buf, 0, sizeof(user_info.hide_password_number_buf));
-        
-        // 清除账户信息（确保不影响后续登录）
+        memset(&user_info, 0, sizeof(user_info));
         memset(&login_user_info, 0, sizeof(login_user_info));
-        
         login_success_flags = 1;
         game_start_home(); // 进入游戏
     } else {
-        // 密码错误，增加错误次数
+        /* 密码错误，增加错误次数 */ 
         login_user_info.error_count++;
         
-        // 更新状态
+        /* 更新状态 */ 
         if (login_user_info.error_count >= 3) {
             strcpy(login_user_info.account_status, "lock");
             lcd_render_text_with_box(
@@ -2601,26 +2656,21 @@ void login_judgment() {
         sleep(3);
         printf("account_state:%s,error_count:%d\n",login_user_info.account_status,login_user_info.error_count);
 
-        // 更新账户信息文件（保存错误计数和状态）
-        user_data_fd = open(temp_account_number_buf, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        /* 更新账户信息文件（保存错误计数和状态） */ 
+        user_data_fd = open(temp_account_number_buf, O_WRONLY | O_CREAT | O_TRUNC);
         if (user_data_fd != -1) {
-            char buffer[1024] = {0};
-            sprintf(buffer, "account:%s,password:%s\n", 
+            char user_data_buf[1024] = {0}; 
+            sprintf(user_data_buf, "account:%s,password:%s\n", 
                     login_user_info.account_number_buf, login_user_info.password_number_buf);
-            sprintf(buffer + strlen(buffer), "account_state:%s,error_count:%d\n", 
+            sprintf(user_data_buf + strlen(user_data_buf), "account_state:%s,error_count:%d\n", 
                     login_user_info.account_status, login_user_info.error_count);
-            write(user_data_fd, buffer, strlen(buffer));
+            write(user_data_fd, user_data_buf, strlen(user_data_buf));
             close(user_data_fd);
         }
         
-        // 清除用户输入数据
-        memset(user_info.account_number_buf, 0, sizeof(user_info.account_number_buf));
-        memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
-        memset(user_info.hide_password_number_buf, 0, sizeof(user_info.hide_password_number_buf));
-        
-        // 清除账户信息（确保不影响后续登录）
+        memset(&user_info, 0, sizeof(user_info));
         memset(&login_user_info, 0, sizeof(login_user_info));
-        
+        login_success_flags = 0;
         login_boot(); // 返回登录界面
     }
 }
@@ -2648,7 +2698,7 @@ void register_judgment() {
 
         /* 2.创建个人文档，此时先判定是否存在，存在返回值-1；不存在就把数据写进去 */
         /* 尝试打开文档（账号），若账号存在，返回值-1 */
-        int user_data_fd = open(temp_account_number_buf, O_RDWR | O_CREAT | O_EXCL, 0644);
+        int user_data_fd = open(temp_account_number_buf, O_RDWR | O_CREAT | O_EXCL);
         if (user_data_fd == -1) {
             /* 因为存在该账号，所以返回值-1 */
             printf("该账号已存在，请重新注册\n");
@@ -2748,6 +2798,7 @@ void register_judgment() {
 }
 
 void game_start_home() {
+    login_success_flags = 0;
     show_bmp_to_lcd("1.bmp", 0, 0, 1024, 600);
 }
 
