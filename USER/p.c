@@ -36,6 +36,9 @@ int skip_login_boot_flags = 0;
 int register_success_flags = 0; /* 注册成功标记位 1：成功 */
 int skip_register_boot_flags = 0;
 int find_account_success_flags = 0;
+int code_button_visible = 1;
+int code_button_clicked = 0;
+int countdown = 0;
 int skip_find_account_boot_flags = 0;
 
 
@@ -3220,16 +3223,73 @@ void find_account_password_box()
     lcd_cleanup();
 }
 
-// 生成六位大写字母随机验证码
-void generate_verification_code() 
-{
-
+// 生成随机验证码
+void generate_random_code(char *code) {
+    srand(time(NULL));
+    for (int i = 0; i < 6; i++) {
+        code[i] = 'A' + rand() % 26;
+    }
+    code[6] = '\0';
 }
 
-// 倒计时线程函数 (只保留一个定义)
-void* countdown_thread(void* arg) 
-{
+// 绘制验证码按钮
+void draw_code_button() {
+    if (code_button_visible) {
+        if (code_button_clicked && countdown > 0) {
+            char countdown_str[10];
+            sprintf(countdown_str, "%ds", countdown);
+            lcd_render_text_with_box(
+                countdown_str,      /* 文本内容 */
+                500, 500,                /* 起始坐标 (x, y) */
+                COLOR_BLACK,             /* 文本颜色 */ 
+                COLOR_LIGHTGRAY,             /* 文本框背景颜色 */ 
+                0,                       /* 文本与文本框边缘的间距 */ 
+                BOX_STYLE_ROUNDED,     /* 矩形样式 */ 
+                15,                       /* 矩形样式不需要半径 */
+                30,                      /* 字体大小 */
+                150,                     /* 文本框宽度 */
+                30                        /* 文本框高度 */
+            );
+        } else {
+            lcd_render_text_with_box(
+                "获取验证码",      /* 文本内容 */
+                500, 500,                /* 起始坐标 (x, y) */
+                COLOR_BLACK,             /* 文本颜色 */ 
+                COLOR_LIGHTGRAY,             /* 文本框背景颜色 */ 
+                0,                       /* 文本与文本框边缘的间距 */ 
+                BOX_STYLE_ROUNDED,     /* 矩形样式 */ 
+                15,                       /* 矩形样式不需要半径 */
+                30,                      /* 字体大小 */
+                150,                     /* 文本框宽度 */
+                30                        /* 文本框高度 */
+            );
+        }
+    }
+}
 
+// 验证码发送线程函数
+void *send_verification_code(void *arg) {
+    while (1) {
+        if (code_button_visible && !code_button_clicked) {
+            draw_code_button();
+            ts_fun();
+            if (input_x >= 500 && input_x <= 600 && input_y >= 500 && input_y <= 550) {
+                code_button_clicked = 1;
+                countdown = 60;
+                char code[7];
+                generate_random_code(code);
+                printf("随机验证码: %s\n", code);
+                while (countdown > 0) {
+                    draw_code_button();
+                    sleep(1);
+                    countdown--;
+                }
+                code_button_clicked = 0;
+            }
+        }
+        usleep(100000); // 每 100ms 检查一次
+    }
+    return NULL;
 }
 
 /* 找回界面验证码输入功能实现 */
@@ -3254,13 +3314,17 @@ void find_account_verification() {
         COLOR_LIGHTGRAY,                    /* 文本颜色 */
         25                                  /* 字体大小 */
     );
-    lcd_draw_filled_rectangle(110, 437, 100, 50, COLOR_LIGHTGRAY);
-    lcd_render_text("获取验证码", 110, 437, COLOR_BLACK, 30);
-    
+    //lcd_draw_filled_rectangle(110, 437, 100, 50, COLOR_LIGHTGRAY);
+    //lcd_render_text("获取验证码", 110, 437, COLOR_BLACK, 30);
+
+    // 创建验证码发送线程
+    pthread_t code_thread;
+    pthread_create(&code_thread, NULL, send_verification_code, NULL);
 
     while (1) {
         ts_fun();
         if (input_x >= 104 && input_x <= 290 && input_y >= 248 && input_y <= 300) {
+            code_button_visible = 0;
             keyboard();    /* 加载键盘 */
 
             /* 打开触摸屏文件 */ 
@@ -3371,6 +3435,8 @@ void find_account_verification() {
                             close(input_fd);
                             return;
                         }
+                        code_button_visible = 1;
+                        draw_code_button();
                         break;  
                     }
 
@@ -3524,8 +3590,8 @@ void find_account_verification() {
                     }
                 }
             }
+            close(input_fd);
         }
-            
     }
 }
 
