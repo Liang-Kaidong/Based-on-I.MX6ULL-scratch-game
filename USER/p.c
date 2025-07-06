@@ -13,6 +13,7 @@ Log: 1.优化账号注册界面位数的注册逻辑
      6.修复验证码获取时图层覆盖的问题
 bug: 
      1.部分函数没有清理lcd资源
+     2.若验证码输入错误，会返回到验证码输入界面，此时若点击获取验证码或创建多个线程，引发段错误(fix?)
 *************************************************************************************************************/
 
 #include <stdio.h>
@@ -45,6 +46,7 @@ time_t start_time = 0;                  /* 利用系统时间戳计算精确倒�
 pthread_t code_thread;                  /* 验证码线程ID，用于管理线程生命周期 */
 int thread_running = 0;                 /* 线程运行状态标记，防止重复创建线程（解决验证码重复获取的问题） */
 int skip_find_account_boot_flags = 0;   /* 停止find_account_boot()的死循环 */
+char code[7];               /* 存储生成的随机验证码，留一位给换行符 */
 
 
 // 定义包含账号和密码数组的结构体
@@ -3245,7 +3247,7 @@ void update_countdown_display() {
         printf("初始化失败。\n");
         return;
     }
-
+    
     /* 检查验证码按钮可见，解决图层覆盖问题 */
     if (code_button_visible) {
         /* 按钮被点击并且处于倒计时状态 */
@@ -3281,21 +3283,21 @@ void update_countdown_display() {
             );
         }
     }
-
-    /* 清理lcd资源 */
-    lcd_cleanup();
 }
 
 /* 停止验证码线程 */ 
 void stop_code_thread() {
-    /* 线程正在运行 */
     if (thread_running) {
-        /* 设置标志让线程退出 */ 
-        code_button_clicked = 0;
-        /* 等待线程结束 */ 
+        // 尝试取消线程
+        pthread_cancel(code_thread);
+        // 等待线程结束
         pthread_join(code_thread, NULL);
-        /* 重置线程状态 */
+        // 更新线程运行状态
         thread_running = 0;
+        // 重置倒计时和按钮状态
+        countdown = 0;
+        code_button_clicked = 0;
+        code_button_visible = 1;
     }
 }
 
@@ -3324,7 +3326,7 @@ void *send_verification_code(void *arg) {
                 code_button_clicked = 1;    /* 标记验证码按钮已被点击 */
                 start_time = time(NULL);    /* 记录开始时间，start_time用于存储时间戳 */ 
                 countdown = 60;             /* 重置倒计时位60s,即从“获取验证码”变成“60”的字样 */ 
-                char code[7];               /* 存储生成的随机验证码，留一位给换行符 */
+
                 generate_random_code(code); /* 生成随机验证码，并将结果存储在code数组中 */
                 printf("收到的验证码是: %s\n", code);
                 
@@ -3366,6 +3368,7 @@ void reset_verification_state() {
 /* 找回界面验证码输入功能实现 */
 void find_account_verification() {
 
+    stop_code_thread();
     /* 初始化字库 */
     if (lcd_init("/dev/fb0", "simkai.ttf") != 0) {
         printf("初始化失败。\n");
@@ -3388,6 +3391,7 @@ void find_account_verification() {
         25                      /* 字体大小 */
     );
 
+
     /* 创建新的验证码发送线程 */ 
     if (pthread_create(&code_thread, NULL, send_verification_code, NULL) != 0) {
         perror("Failed to create code thread.\n");
@@ -3399,6 +3403,7 @@ void find_account_verification() {
         if (input_x >= 104 && input_x <= 225 && input_y >= 437 && input_y <= 484) {
             /* 点击到修改密码按钮 */ 
             find_account_judgment_2();
+            find_account_allow_flags = 1;
             return;
         }
 
@@ -3519,6 +3524,7 @@ void find_account_verification() {
                             );
                             /* 点击到修改密码 */
                             if (input_x >= 104 && input_x <= 225 && input_y >= 437 && input_y <= 484) {
+                                find_account_allow_flags = 1;
                                 find_account_judgment_2();
                                 return;
                             }
@@ -4085,7 +4091,7 @@ void login_judgment() {
     /* 检查账户是否被锁定 */ 
     if (strcmp(login_user_info.account_status, "lock") == 0) {
         /* 更新账户信息文件（确保锁定状态被保存） */ 
-        user_data_fd = open(temp_account_number_buf, O_WRONLY | O_CREAT | O_TRUNC);
+        user_data_fd = open(temp_account_number_buf, O_RDWR | O_CREAT | O_TRUNC);
         if (user_data_fd != -1) {
             char user_data_buf[1024] = {0};
             sprintf(user_data_buf, "account:%s,password:%s\n", 
@@ -4128,7 +4134,7 @@ void login_judgment() {
         strcpy(login_user_info.account_status, "unlock");
         
         /* 更新账户信息文件（保存重置后的状态 */ 
-        user_data_fd = open(temp_account_number_buf, O_WRONLY | O_CREAT | O_TRUNC);
+        user_data_fd = open(temp_account_number_buf, O_RDWR | O_CREAT | O_TRUNC);
         if (user_data_fd != -1) {
             char user_data_buf[1024] = {0};
             sprintf(user_data_buf, "account:%s,password:%s\n", 
@@ -4196,7 +4202,7 @@ void login_judgment() {
         printf("account_state:%s,error_count:%d\n",login_user_info.account_status,login_user_info.error_count);
 
         /* 更新账户信息文件（保存错误计数和状态） */ 
-        user_data_fd = open(temp_account_number_buf, O_WRONLY | O_CREAT | O_TRUNC);
+        user_data_fd = open(temp_account_number_buf, O_RDWR | O_CREAT | O_TRUNC);
         if (user_data_fd != -1) {
             char user_data_buf[1024] = {0}; 
             sprintf(user_data_buf, "account:%s,password:%s\n", 
@@ -4459,13 +4465,88 @@ void find_account_judgment_1()
 /* 找回判断2 */
 void find_account_judgment_2()
 {
-    show_bmp_to_lcd("find_account.bmp", 0, 0, 1024, 600);
     /* 初始化字库 */
     if (lcd_init("/dev/fb0", "simkai.ttf") != 0) {
         printf("初始化失败。\n");
         return;
     }
 
+    code_button_visible = 0;
+
+    /* 先处理不允许找回的逻辑 */
+    if (find_account_allow_flags == 0) {
+        /* 不允许找回 */
+        lcd_render_text_with_box(
+            "当前禁止用户找回，请重试！",             /* 文本内容 */
+            350, 400,                       /* 起始坐标 (x, y) */
+            COLOR_WHITE,                    /* 文本颜色 */
+            COLOR_LIGHTGRAY,                /* 文本框背景颜色 */
+            10,                             /* 文本与文本框边缘的间距 */
+            BOX_STYLE_ROUNDED,              /* 圆角矩形样式 */
+            15,                             /* 圆角矩形半径 */
+            30,                             /* 字体大小 */
+            0,                              /* 文本框宽度 */
+            0                               /* 文本框高度 */
+        );
+        sleep(3);
+        memset(&user_info, 0, sizeof(user_info));
+        find_account_allow_flags = 0;
+        login_boot();
+        return;
+    } else if (find_account_allow_flags == 1 && strlen(user_info.verification_code_buf) !=0) {
+        /* 处理验证码的正确性 */
+        if(strcmp(code, user_info.verification_code_buf) == 0)
+        {
+            /* 验证码正确 */
+
+            /* 
+            * 一定要先创建一个临时账户，否则你改都改不了。
+            * 若变成int user_data_fd = open(user_info.account_number_buf, O_RDWR); 
+            * 则下一步打开文件就是以账号名为文件，所以是修改不了的。
+            */
+            char temp_account_number_buf[128] = {0};
+            sprintf(temp_account_number_buf, "%s.txt", user_info.account_number_buf);
+            int user_data_fd = open(temp_account_number_buf, O_RDWR);
+            char user_data_buf[256] = {0};
+            sprintf(user_data_buf, "account:%s,password:%s\n"
+                                   "account_state:unlock,error_count:0\n", 
+                    user_info.account_number_buf, 
+                    user_info.password_number_buf);
+            write(user_data_fd, user_data_buf, strlen(user_data_buf));
+
+            show_bmp_to_lcd("find_account_success.bmp", 0, 0, 1024, 600);
+            sleep(3);
+            memset(&user_info, 0, sizeof(user_info));
+            memset(user_data_buf, 0, sizeof(user_data_buf));
+            memset(code, 0, sizeof(code));
+            close(user_data_fd);
+            find_account_allow_flags = 0;
+            skip_find_account_boot_flags = 1;
+            login_boot();
+            return;
+        }
+    } else {
+        /* 验证码为空时 */
+        lcd_render_text_with_box(
+            "验证码为空验证码错误，请重新获取验证码",             /* 文本内容 */
+            350, 400,                       /* 起始坐标 (x, y) */
+            COLOR_WHITE,                    /* 文本颜色 */
+            COLOR_LIGHTGRAY,                /* 文本框背景颜色 */
+            10,                             /* 文本与文本框边缘的间距 */
+            BOX_STYLE_ROUNDED,              /* 圆角矩形样式 */
+            15,                             /* 圆角矩形半径 */
+            30,                             /* 字体大小 */
+            0,                              /* 文本框宽度 */
+            0                               /* 文本框高度 */
+        );
+        sleep(3);
+        memset(user_info.verification_code_buf, 0, sizeof(user_info.verification_code_buf));
+        memset(code, 0, sizeof(code));
+        find_account_allow_flags = 0;
+        find_account_verification();
+    }
+    /* 清理lcd资源 */
+    lcd_cleanup();
 }
 
 /* 游戏引导页面 */
