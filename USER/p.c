@@ -9,6 +9,8 @@ Log: 1.优化账号注册界面位数的注册逻辑
      2.新增账号注册功能
      3.新增账号冻结功能
      4.新增验证码一级与二级界面
+     5.新增获取验证码的逻辑
+     6.修复验证码获取时图层覆盖的问题
 bug: 
      1.部分函数没有清理lcd资源
 *************************************************************************************************************/
@@ -30,16 +32,19 @@ bug:
 #include "lcd_font.h"
 
 /* 全局变量定义 */
-int input_x, input_y;           /* 触摸点 x 和 y 坐标 */
-int login_success_flags = 0;    /* 登录成功标记位 1：成功 */
-int skip_login_boot_flags = 0;
-int register_success_flags = 0; /* 注册成功标记位 1：成功 */
-int skip_register_boot_flags = 0;
-int find_account_success_flags = 0;
-int code_button_visible = 1;
-int code_button_clicked = 0;
-int countdown = 0;
-int skip_find_account_boot_flags = 0;
+int input_x, input_y;                   /* 触摸点 x 和 y 坐标 */
+int login_allow_flags = 0;              /* 允许登录标记位 1：允许 */
+int skip_login_boot_flags = 0;          /* 停止login_boot()的死循环 */
+int register_allow_flags = 0;           /* 允许注册标记位 1：允许 */
+int skip_register_boot_flags = 0;       /* 停止register_boot()的死循环 */
+int find_account_allow_flags = 0;       /* 允许找回标志位 1：允许*/
+int code_button_visible = 1;            /* 验证码按钮可见性标记 1：可见状态*/
+int code_button_clicked = 0;            /* 验证码按钮点击状态 0：未在倒计时 */
+int countdown = 0;                      /* 倒计时秒数，初始为0，点击按钮后重置为60 */
+time_t start_time = 0;                  /* 利用系统时间戳计算精确倒计时，避免sleep累积误差 */
+pthread_t code_thread;                  /* 验证码线程ID，用于管理线程生命周期 */
+int thread_running = 0;                 /* 线程运行状态标记，防止重复创建线程（解决验证码重复获取的问题） */
+int skip_find_account_boot_flags = 0;   /* 停止find_account_boot()的死循环 */
 
 
 // 定义包含账号和密码数组的结构体
@@ -407,7 +412,7 @@ void input_account_box()
                         0                               /* 文本框高度 */
                     );
                     sleep(3);
-                    login_success_flags = 0;
+                    login_allow_flags = 0;
                     memset(user_info.account_number_buf, 0, sizeof(user_info.account_number_buf));
                     memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
                     memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
@@ -571,7 +576,7 @@ void input_account_box()
                             input_password_box();
                             break;
                         } else if (input_x >= 104 && input_x <= 248 && input_y >= 400 && input_y <= 500) {
-                            login_success_flags = 1;    /* 满足所有输入条件，允许登录 */
+                            login_allow_flags = 1;    /* 满足所有输入条件，允许登录 */
                             login_judgment();
                             return;
                         } else if (input_x >= 250 && input_x <= 361 && input_y >= 424 && input_y <= 484) {
@@ -588,117 +593,117 @@ void input_account_box()
             // 处理键盘点击事件
             if (input_x >= 224 && input_x <= 810 && input_y >= 503 && input_y <= 600) { //空格键
                 strcat(user_info.account_number_buf, " ");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 0 && input_x <= 100 && input_y >= 198 && input_y <= 254) { //Q键
                 strcat(user_info.account_number_buf, "Q");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 144 && input_x <= 210 && input_y >= 198 && input_y <= 254) { //W键
                 strcat(user_info.account_number_buf, "W");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 247 && input_x <= 301 && input_y >= 198 && input_y <= 254) { //E键
                 strcat(user_info.account_number_buf, "E");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 331 && input_x <= 400 && input_y >= 198 && input_y <= 254) { //R键
                 strcat(user_info.account_number_buf, "R");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 436 && input_x <= 495 && input_y >= 198 && input_y <= 254) { //T键
                 strcat(user_info.account_number_buf, "T");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 544 && input_x <= 600 && input_y >= 198 && input_y <= 254) { //Y键
                 strcat(user_info.account_number_buf, "Y");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 640 && input_x <= 694 && input_y >= 198 && input_y <= 254) { //U键
                 strcat(user_info.account_number_buf, "U");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 740 && input_x <= 797 && input_y >= 198 && input_y <= 254) { //I键
                 strcat(user_info.account_number_buf, "I");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 834 && input_x <= 900 && input_y >= 198 && input_y <= 254) { //O键
                 strcat(user_info.account_number_buf, "O");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 927 && input_x <= 1024 && input_y >= 198 && input_y <= 254) { //P键
                 strcat(user_info.account_number_buf, "P");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 104 && input_x <= 150 && input_y >= 297 && input_y <= 353) { //A键
                 strcat(user_info.account_number_buf, "A");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 194 && input_x <= 264 && input_y >= 297 && input_y <= 353) { //S键
                 strcat(user_info.account_number_buf, "S");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 291 && input_x <= 350 && input_y >= 297 && input_y <= 353) { //D键
                 strcat(user_info.account_number_buf, "D");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 385 && input_x <= 447 && input_y >= 297 && input_y <= 353) { //F键
                 strcat(user_info.account_number_buf, "F");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 489 && input_x <= 544 && input_y >= 297 && input_y <= 353) { //G键
                 strcat(user_info.account_number_buf, "G");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 589 && input_x <= 647 && input_y >= 297 && input_y <= 353) { //H键
                 strcat(user_info.account_number_buf, "H");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 697 && input_x <= 742 && input_y >= 297 && input_y <= 353) { //J键
                 strcat(user_info.account_number_buf, "J");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 789 && input_x <= 847 && input_y >= 297 && input_y <= 353) { //K键
                 strcat(user_info.account_number_buf, "K");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 894 && input_x <= 938 && input_y >= 297 && input_y <= 353) { //L键
                 strcat(user_info.account_number_buf, "L");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 155 && input_x <= 205 && input_y >= 400 && input_y <= 458) { //Z键
                 strcat(user_info.account_number_buf, "Z");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 249 && input_x <= 297 && input_y >= 400 && input_y <= 458) { //X键
                 strcat(user_info.account_number_buf, "X");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 342 && input_x <= 400 && input_y >= 400 && input_y <= 458) { //C键
                 strcat(user_info.account_number_buf, "C");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 445 && input_x <= 495 && input_y >= 400 && input_y <= 458) { //V键
                 strcat(user_info.account_number_buf, "V");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 541 && input_x <= 589 && input_y >= 400 && input_y <= 458) { //B键
                 strcat(user_info.account_number_buf, "B");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 641 && input_x <= 692 && input_y >= 400 && input_y <= 458) { //N键
                 strcat(user_info.account_number_buf, "N");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 739 && input_x <= 800 && input_y >= 400 && input_y <= 458) { //M键
                 strcat(user_info.account_number_buf, "M");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 0 && input_x <= 120 && input_y >= 393 && input_y <= 600) { //删除键
                 if (strlen(user_info.account_number_buf) > 0) {
                     user_info.account_number_buf[strlen(user_info.account_number_buf) - 1] = '\0';
                 }
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
 
             if (input_changed) {
@@ -947,7 +952,7 @@ void input_password_box()
                             input_password_box();
                             break;
                         } else if (input_x >= 104 && input_x <= 248 && input_y >= 400 && input_y <= 500) {
-                            login_success_flags = 0;    /* 空账号与密码强制不允许登录 */
+                            login_allow_flags = 0;    /* 空账号与密码强制不允许登录 */
                             login_judgment();
                             return;
                         } else if (input_x >= 250 && input_x <= 361 && input_y >= 424 && input_y <= 484) {
@@ -1039,7 +1044,7 @@ void input_password_box()
                             input_password_box();
                             break;
                         } else if (input_x >= 104 && input_x <= 248 && input_y >= 400 && input_y <= 500) {
-                            login_success_flags = 1;    /* 满足输入条件，允许登录 */
+                            login_allow_flags = 1;    /* 满足输入条件，允许登录 */
                             login_judgment();
                             return;
                         } else if (input_x >= 250 && input_x <= 361 && input_y >= 424 && input_y <= 484) {
@@ -1066,7 +1071,7 @@ void input_password_box()
                         0                               /* 文本框高度 */
                     );
                     sleep(3);
-                    login_success_flags = 0;
+                    login_allow_flags = 0;
                     memset(user_info.account_number_buf, 0, sizeof(user_info.account_number_buf));
                     memset(user_info.hide_password_number_buf, 0, sizeof(user_info.hide_password_number_buf));
                     memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
@@ -1079,137 +1084,137 @@ void input_password_box()
             if (input_x >= 224 && input_x <= 810 && input_y >= 503 && input_y <= 600) { //空格键
                 strcat(user_info.password_number_buf, " ");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 0 && input_x <= 100 && input_y >= 198 && input_y <= 254) { //Q键
                 strcat(user_info.password_number_buf, "Q");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 144 && input_x <= 210 && input_y >= 198 && input_y <= 254) { //W键
                 strcat(user_info.password_number_buf, "W");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 247 && input_x <= 301 && input_y >= 198 && input_y <= 254) { //E键
                 strcat(user_info.password_number_buf, "E");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 331 && input_x <= 400 && input_y >= 198 && input_y <= 254) { //R键
                 strcat(user_info.password_number_buf, "R");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 436 && input_x <= 495 && input_y >= 198 && input_y <= 254) { //T键
                 strcat(user_info.password_number_buf, "T");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 544 && input_x <= 600 && input_y >= 198 && input_y <= 254) { //Y键
                 strcat(user_info.password_number_buf, "Y");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 640 && input_x <= 694 && input_y >= 198 && input_y <= 254) { //U键
                 strcat(user_info.password_number_buf, "U");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 740 && input_x <= 797 && input_y >= 198 && input_y <= 254) { //I键
                 strcat(user_info.password_number_buf, "I");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 834 && input_x <= 900 && input_y >= 198 && input_y <= 254) { //O键
                 strcat(user_info.password_number_buf, "O");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 927 && input_x <= 1024 && input_y >= 198 && input_y <= 254) { //P键
                 strcat(user_info.password_number_buf, "P");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 104 && input_x <= 150 && input_y >= 297 && input_y <= 353) { //A键
                 strcat(user_info.password_number_buf, "A");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 194 && input_x <= 264 && input_y >= 297 && input_y <= 353) { //S键
                 strcat(user_info.password_number_buf, "S");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 291 && input_x <= 350 && input_y >= 297 && input_y <= 353) { //D键
                 strcat(user_info.password_number_buf, "D");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 385 && input_x <= 447 && input_y >= 297 && input_y <= 353) { //F键
                 strcat(user_info.password_number_buf, "F");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 489 && input_x <= 544 && input_y >= 297 && input_y <= 353) { //G键
                 strcat(user_info.password_number_buf, "G");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 589 && input_x <= 647 && input_y >= 297 && input_y <= 353) { //H键
                 strcat(user_info.password_number_buf, "H");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 697 && input_x <= 742 && input_y >= 297 && input_y <= 353) { //J键
                 strcat(user_info.password_number_buf, "J");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 789 && input_x <= 847 && input_y >= 297 && input_y <= 353) { //K键
                 strcat(user_info.password_number_buf, "K");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 894 && input_x <= 938 && input_y >= 297 && input_y <= 353) { //L键
                 strcat(user_info.password_number_buf, "L");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 155 && input_x <= 205 && input_y >= 400 && input_y <= 458) { //Z键
                 strcat(user_info.password_number_buf, "Z");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 249 && input_x <= 297 && input_y >= 400 && input_y <= 458) { //X键
                 strcat(user_info.password_number_buf, "X");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 342 && input_x <= 400 && input_y >= 400 && input_y <= 458) { //C键
                 strcat(user_info.password_number_buf, "C");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 445 && input_x <= 495 && input_y >= 400 && input_y <= 458) { //V键
                 strcat(user_info.password_number_buf, "V");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 541 && input_x <= 589 && input_y >= 400 && input_y <= 458) { //B键
                 strcat(user_info.password_number_buf, "B");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 641 && input_x <= 692 && input_y >= 400 && input_y <= 458) { //N键
                 strcat(user_info.password_number_buf, "N");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 739 && input_x <= 800 && input_y >= 400 && input_y <= 458) { //M键
                 strcat(user_info.password_number_buf, "M");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 0 && input_x <= 120 && input_y >= 393 && input_y <= 600) { //删除键
                 if (strlen(user_info.password_number_buf) > 0) {
@@ -1218,7 +1223,7 @@ void input_password_box()
                 if (strlen(user_info.hide_password_number_buf) > 0) {
                     user_info.hide_password_number_buf[strlen(user_info.hide_password_number_buf) - 1] = '\0';
                 }
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
 
             if (input_changed) {
@@ -1377,7 +1382,7 @@ void register_account_box()
                         0                               /* 文本框高度 */
                     );
                     sleep(3);
-                    register_success_flags = 0;
+                    register_allow_flags = 0;
                     memset(user_info.account_number_buf, 0, sizeof(user_info.account_number_buf));
                     memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
                     memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
@@ -1451,7 +1456,7 @@ void register_account_box()
                             register_password_box();
                             break;
                         } else if (input_x >= 250 && input_x <= 361 && input_y >= 424 && input_y <= 484) {
-                            register_success_flags = 0; /* 空账号与密码强制不允许注册 */
+                            register_allow_flags = 0; /* 空账号与密码强制不允许注册 */
                             register_judgment();
                             return;  /* 强行退出函数，避免死循环 */  
                         } else if (input_x >= 104 && input_x <= 248 && input_y >= 400 && input_y <= 500) {
@@ -1468,7 +1473,7 @@ void register_account_box()
                                 0                               /* 文本框高度 */
                             );
                             sleep(3);
-                            register_success_flags = 0;
+                            register_allow_flags = 0;
                             memset(user_info.account_number_buf, 0, sizeof(user_info.account_number_buf));
                             memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
                             memset(user_info.hide_password_number_buf, 0, sizeof(user_info.hide_password_number_buf));
@@ -1555,7 +1560,7 @@ void register_account_box()
                             register_password_box();
                             break;
                         } else if (input_x >= 250 && input_x <= 361 && input_y >= 424 && input_y <= 484) {
-                            register_success_flags = 1; /* 满足所有输入条件，允许注册 */
+                            register_allow_flags = 1; /* 满足所有输入条件，允许注册 */
                             register_judgment();
                             return;  /* 强行退出函数，避免死循环 */ 
                         } else if (input_x >= 104 && input_x <= 248 && input_y >= 400 && input_y <= 500) {
@@ -1572,7 +1577,7 @@ void register_account_box()
                                 0                               /* 文本框高度 */
                             );
                             sleep(3);
-                            register_success_flags = 0;
+                            register_allow_flags = 0;
                             memset(user_info.account_number_buf, 0, sizeof(user_info.account_number_buf));
                             memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
                             memset(user_info.hide_password_number_buf, 0, sizeof(user_info.hide_password_number_buf));
@@ -1587,117 +1592,117 @@ void register_account_box()
             // 处理键盘点击事件
             if (input_x >= 224 && input_x <= 810 && input_y >= 503 && input_y <= 600) { //空格键
                 strcat(user_info.account_number_buf, " ");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 0 && input_x <= 100 && input_y >= 198 && input_y <= 254) { //Q键
                 strcat(user_info.account_number_buf, "Q");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 144 && input_x <= 210 && input_y >= 198 && input_y <= 254) { //W键
                 strcat(user_info.account_number_buf, "W");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 247 && input_x <= 301 && input_y >= 198 && input_y <= 254) { //E键
                 strcat(user_info.account_number_buf, "E");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 331 && input_x <= 400 && input_y >= 198 && input_y <= 254) { //R键
                 strcat(user_info.account_number_buf, "R");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 436 && input_x <= 495 && input_y >= 198 && input_y <= 254) { //T键
                 strcat(user_info.account_number_buf, "T");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 544 && input_x <= 600 && input_y >= 198 && input_y <= 254) { //Y键
                 strcat(user_info.account_number_buf, "Y");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 640 && input_x <= 694 && input_y >= 198 && input_y <= 254) { //U键
                 strcat(user_info.account_number_buf, "U");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 740 && input_x <= 797 && input_y >= 198 && input_y <= 254) { //I键
                 strcat(user_info.account_number_buf, "I");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 834 && input_x <= 900 && input_y >= 198 && input_y <= 254) { //O键
                 strcat(user_info.account_number_buf, "O");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 927 && input_x <= 1024 && input_y >= 198 && input_y <= 254) { //P键
                 strcat(user_info.account_number_buf, "P");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 104 && input_x <= 150 && input_y >= 297 && input_y <= 353) { //A键
                 strcat(user_info.account_number_buf, "A");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 194 && input_x <= 264 && input_y >= 297 && input_y <= 353) { //S键
                 strcat(user_info.account_number_buf, "S");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 291 && input_x <= 350 && input_y >= 297 && input_y <= 353) { //D键
                 strcat(user_info.account_number_buf, "D");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 385 && input_x <= 447 && input_y >= 297 && input_y <= 353) { //F键
                 strcat(user_info.account_number_buf, "F");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 489 && input_x <= 544 && input_y >= 297 && input_y <= 353) { //G键
                 strcat(user_info.account_number_buf, "G");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 589 && input_x <= 647 && input_y >= 297 && input_y <= 353) { //H键
                 strcat(user_info.account_number_buf, "H");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 697 && input_x <= 742 && input_y >= 297 && input_y <= 353) { //J键
                 strcat(user_info.account_number_buf, "J");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 789 && input_x <= 847 && input_y >= 297 && input_y <= 353) { //K键
                 strcat(user_info.account_number_buf, "K");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 894 && input_x <= 938 && input_y >= 297 && input_y <= 353) { //L键
                 strcat(user_info.account_number_buf, "L");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 155 && input_x <= 205 && input_y >= 400 && input_y <= 458) { //Z键
                 strcat(user_info.account_number_buf, "Z");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 249 && input_x <= 297 && input_y >= 400 && input_y <= 458) { //X键
                 strcat(user_info.account_number_buf, "X");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 342 && input_x <= 400 && input_y >= 400 && input_y <= 458) { //C键
                 strcat(user_info.account_number_buf, "C");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 445 && input_x <= 495 && input_y >= 400 && input_y <= 458) { //V键
                 strcat(user_info.account_number_buf, "V");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 541 && input_x <= 589 && input_y >= 400 && input_y <= 458) { //B键
                 strcat(user_info.account_number_buf, "B");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 641 && input_x <= 692 && input_y >= 400 && input_y <= 458) { //N键
                 strcat(user_info.account_number_buf, "N");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 739 && input_x <= 800 && input_y >= 400 && input_y <= 458) { //M键
                 strcat(user_info.account_number_buf, "M");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 0 && input_x <= 120 && input_y >= 393 && input_y <= 600) { //删除键
                 if (strlen(user_info.account_number_buf) > 0) {
                     user_info.account_number_buf[strlen(user_info.account_number_buf) - 1] = '\0';
                 }
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
 
             if (input_changed) {
@@ -1946,7 +1951,7 @@ void register_password_box()
                             register_password_box();
                             break;
                         } else if (input_x >= 250 && input_x <= 361 && input_y >= 424 && input_y <= 484) {
-                            register_success_flags = 0; /* 空账号与密码强制不允许注册 */
+                            register_allow_flags = 0; /* 空账号与密码强制不允许注册 */
                             register_judgment();
                             return;  /* 强行退出函数，避免死循环 */  
                         } else if (input_x >= 104 && input_x <= 248 && input_y >= 400 && input_y <= 500) {
@@ -1963,7 +1968,7 @@ void register_password_box()
                                 0                               /* 文本框高度 */
                             );
                             sleep(3);
-                            register_success_flags = 0;
+                            register_allow_flags = 0;
                             memset(user_info.account_number_buf, 0, sizeof(user_info.account_number_buf));
                             memset(user_info.hide_password_number_buf, 0, sizeof(user_info.hide_password_number_buf));
                             memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
@@ -2057,7 +2062,7 @@ void register_password_box()
                             register_password_box();
                             break;
                         } else if (input_x >= 250 && input_x <= 361 && input_y >= 424 && input_y <= 484) {
-                            register_success_flags = 1; /* 满足输入条件，允许注册 */
+                            register_allow_flags = 1; /* 满足输入条件，允许注册 */
                             register_judgment();
                             return;  /* 强行退出函数，避免死循环 */  
                         } else if (input_x >= 104 && input_x <= 248 && input_y >= 400 && input_y <= 500) {
@@ -2074,7 +2079,7 @@ void register_password_box()
                                 0                               /* 文本框高度 */
                             );
                             sleep(3);
-                            register_success_flags = 0;
+                            register_allow_flags = 0;
                             memset(user_info.account_number_buf, 0, sizeof(user_info.account_number_buf));
                             memset(user_info.hide_password_number_buf, 0, sizeof(user_info.hide_password_number_buf));
                             memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
@@ -2097,7 +2102,7 @@ void register_password_box()
                         0                               /* 文本框高度 */
                     );
                     sleep(3);
-                    register_success_flags = 0;
+                    register_allow_flags = 0;
                     memset(user_info.account_number_buf, 0, sizeof(user_info.account_number_buf));
                     memset(user_info.hide_password_number_buf, 0, sizeof(user_info.hide_password_number_buf));
                     memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
@@ -2110,137 +2115,137 @@ void register_password_box()
             if (input_x >= 224 && input_x <= 810 && input_y >= 503 && input_y <= 600) { //空格键
                 strcat(user_info.password_number_buf, " ");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 0 && input_x <= 100 && input_y >= 198 && input_y <= 254) { //Q键
                 strcat(user_info.password_number_buf, "Q");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 144 && input_x <= 210 && input_y >= 198 && input_y <= 254) { //W键
                 strcat(user_info.password_number_buf, "W");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 247 && input_x <= 301 && input_y >= 198 && input_y <= 254) { //E键
                 strcat(user_info.password_number_buf, "E");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 331 && input_x <= 400 && input_y >= 198 && input_y <= 254) { //R键
                 strcat(user_info.password_number_buf, "R");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 436 && input_x <= 495 && input_y >= 198 && input_y <= 254) { //T键
                 strcat(user_info.password_number_buf, "T");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 544 && input_x <= 600 && input_y >= 198 && input_y <= 254) { //Y键
                 strcat(user_info.password_number_buf, "Y");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 640 && input_x <= 694 && input_y >= 198 && input_y <= 254) { //U键
                 strcat(user_info.password_number_buf, "U");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 740 && input_x <= 797 && input_y >= 198 && input_y <= 254) { //I键
                 strcat(user_info.password_number_buf, "I");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 834 && input_x <= 900 && input_y >= 198 && input_y <= 254) { //O键
                 strcat(user_info.password_number_buf, "O");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 927 && input_x <= 1024 && input_y >= 198 && input_y <= 254) { //P键
                 strcat(user_info.password_number_buf, "P");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 104 && input_x <= 150 && input_y >= 297 && input_y <= 353) { //A键
                 strcat(user_info.password_number_buf, "A");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 194 && input_x <= 264 && input_y >= 297 && input_y <= 353) { //S键
                 strcat(user_info.password_number_buf, "S");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 291 && input_x <= 350 && input_y >= 297 && input_y <= 353) { //D键
                 strcat(user_info.password_number_buf, "D");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 385 && input_x <= 447 && input_y >= 297 && input_y <= 353) { //F键
                 strcat(user_info.password_number_buf, "F");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 489 && input_x <= 544 && input_y >= 297 && input_y <= 353) { //G键
                 strcat(user_info.password_number_buf, "G");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 589 && input_x <= 647 && input_y >= 297 && input_y <= 353) { //H键
                 strcat(user_info.password_number_buf, "H");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 697 && input_x <= 742 && input_y >= 297 && input_y <= 353) { //J键
                 strcat(user_info.password_number_buf, "J");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 789 && input_x <= 847 && input_y >= 297 && input_y <= 353) { //K键
                 strcat(user_info.password_number_buf, "K");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 894 && input_x <= 938 && input_y >= 297 && input_y <= 353) { //L键
                 strcat(user_info.password_number_buf, "L");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 155 && input_x <= 205 && input_y >= 400 && input_y <= 458) { //Z键
                 strcat(user_info.password_number_buf, "Z");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 249 && input_x <= 297 && input_y >= 400 && input_y <= 458) { //X键
                 strcat(user_info.password_number_buf, "X");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 342 && input_x <= 400 && input_y >= 400 && input_y <= 458) { //C键
                 strcat(user_info.password_number_buf, "C");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 445 && input_x <= 495 && input_y >= 400 && input_y <= 458) { //V键
                 strcat(user_info.password_number_buf, "V");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 541 && input_x <= 589 && input_y >= 400 && input_y <= 458) { //B键
                 strcat(user_info.password_number_buf, "B");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 641 && input_x <= 692 && input_y >= 400 && input_y <= 458) { //N键
                 strcat(user_info.password_number_buf, "N");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 739 && input_x <= 800 && input_y >= 400 && input_y <= 458) { //M键
                 strcat(user_info.password_number_buf, "M");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 0 && input_x <= 120 && input_y >= 393 && input_y <= 600) { //删除键
                 if (strlen(user_info.password_number_buf) > 0) {
@@ -2249,7 +2254,7 @@ void register_password_box()
                 if (strlen(user_info.hide_password_number_buf) > 0) {
                     user_info.hide_password_number_buf[strlen(user_info.hide_password_number_buf) - 1] = '\0';
                 }
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
 
             if (input_changed) {
@@ -2408,7 +2413,7 @@ void find_account_account_box()
                         0                               /* 文本框高度 */
                     );
                     sleep(3);
-                    find_account_success_flags = 0;
+                    find_account_allow_flags = 0;
                     find_account_account_box();
                     return;
                 }
@@ -2553,7 +2558,7 @@ void find_account_account_box()
                             find_account_password_box();
                             return;
                         } else if (input_x >= 104 && input_x <= 248 && input_y >= 400 && input_y <= 500) {
-                            find_account_success_flags = 1;    /* 满足所有输入条件，允许找回 */
+                            find_account_allow_flags = 1;    /* 满足所有输入条件，允许找回 */
                             find_account_judgment_1();
                             return;
                         }
@@ -2564,117 +2569,117 @@ void find_account_account_box()
             // 处理键盘点击事件
             if (input_x >= 224 && input_x <= 810 && input_y >= 503 && input_y <= 600) { //空格键
                 strcat(user_info.account_number_buf, " ");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 0 && input_x <= 100 && input_y >= 198 && input_y <= 254) { //Q键
                 strcat(user_info.account_number_buf, "Q");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 144 && input_x <= 210 && input_y >= 198 && input_y <= 254) { //W键
                 strcat(user_info.account_number_buf, "W");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 247 && input_x <= 301 && input_y >= 198 && input_y <= 254) { //E键
                 strcat(user_info.account_number_buf, "E");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 331 && input_x <= 400 && input_y >= 198 && input_y <= 254) { //R键
                 strcat(user_info.account_number_buf, "R");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 436 && input_x <= 495 && input_y >= 198 && input_y <= 254) { //T键
                 strcat(user_info.account_number_buf, "T");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 544 && input_x <= 600 && input_y >= 198 && input_y <= 254) { //Y键
                 strcat(user_info.account_number_buf, "Y");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 640 && input_x <= 694 && input_y >= 198 && input_y <= 254) { //U键
                 strcat(user_info.account_number_buf, "U");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 740 && input_x <= 797 && input_y >= 198 && input_y <= 254) { //I键
                 strcat(user_info.account_number_buf, "I");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 834 && input_x <= 900 && input_y >= 198 && input_y <= 254) { //O键
                 strcat(user_info.account_number_buf, "O");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 927 && input_x <= 1024 && input_y >= 198 && input_y <= 254) { //P键
                 strcat(user_info.account_number_buf, "P");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 104 && input_x <= 150 && input_y >= 297 && input_y <= 353) { //A键
                 strcat(user_info.account_number_buf, "A");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 194 && input_x <= 264 && input_y >= 297 && input_y <= 353) { //S键
                 strcat(user_info.account_number_buf, "S");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 291 && input_x <= 350 && input_y >= 297 && input_y <= 353) { //D键
                 strcat(user_info.account_number_buf, "D");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 385 && input_x <= 447 && input_y >= 297 && input_y <= 353) { //F键
                 strcat(user_info.account_number_buf, "F");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 489 && input_x <= 544 && input_y >= 297 && input_y <= 353) { //G键
                 strcat(user_info.account_number_buf, "G");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 589 && input_x <= 647 && input_y >= 297 && input_y <= 353) { //H键
                 strcat(user_info.account_number_buf, "H");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 697 && input_x <= 742 && input_y >= 297 && input_y <= 353) { //J键
                 strcat(user_info.account_number_buf, "J");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 789 && input_x <= 847 && input_y >= 297 && input_y <= 353) { //K键
                 strcat(user_info.account_number_buf, "K");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 894 && input_x <= 938 && input_y >= 297 && input_y <= 353) { //L键
                 strcat(user_info.account_number_buf, "L");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 155 && input_x <= 205 && input_y >= 400 && input_y <= 458) { //Z键
                 strcat(user_info.account_number_buf, "Z");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 249 && input_x <= 297 && input_y >= 400 && input_y <= 458) { //X键
                 strcat(user_info.account_number_buf, "X");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 342 && input_x <= 400 && input_y >= 400 && input_y <= 458) { //C键
                 strcat(user_info.account_number_buf, "C");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 445 && input_x <= 495 && input_y >= 400 && input_y <= 458) { //V键
                 strcat(user_info.account_number_buf, "V");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 541 && input_x <= 589 && input_y >= 400 && input_y <= 458) { //B键
                 strcat(user_info.account_number_buf, "B");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 641 && input_x <= 692 && input_y >= 400 && input_y <= 458) { //N键
                 strcat(user_info.account_number_buf, "N");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 739 && input_x <= 800 && input_y >= 400 && input_y <= 458) { //M键
                 strcat(user_info.account_number_buf, "M");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 0 && input_x <= 120 && input_y >= 393 && input_y <= 600) { //删除键
                 if (strlen(user_info.account_number_buf) > 0) {
                     user_info.account_number_buf[strlen(user_info.account_number_buf) - 1] = '\0';
                 }
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
 
             if (input_changed) {
@@ -2923,7 +2928,7 @@ void find_account_password_box()
                             find_account_password_box();
                             return;
                         } else if (input_x >= 104 && input_x <= 248 && input_y >= 400 && input_y <= 500) {
-                            find_account_success_flags = 0;    /* 空账号与密码强制不允许登录 */
+                            find_account_allow_flags = 0;    /* 空账号与密码强制不允许登录 */
                             find_account_judgment_1();
                             return;
                         }
@@ -3008,7 +3013,7 @@ void find_account_password_box()
                             find_account_password_box();
                             break;
                         } else if (input_x >= 104 && input_x <= 248 && input_y >= 400 && input_y <= 500) {
-                            find_account_success_flags = 1;    /* 满足输入条件，允许登录 */
+                            find_account_allow_flags = 1;    /* 满足输入条件，允许登录 */
                             find_account_judgment_1();
                             return;
                         }
@@ -3028,7 +3033,7 @@ void find_account_password_box()
                         0                               /* 文本框高度 */
                     );
                     sleep(3);
-                    find_account_success_flags = 0;
+                    find_account_allow_flags = 0;
                     memset(user_info.hide_password_number_buf, 0, sizeof(user_info.hide_password_number_buf));
                     memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
                     find_account_password_box();
@@ -3040,137 +3045,137 @@ void find_account_password_box()
             if (input_x >= 224 && input_x <= 810 && input_y >= 503 && input_y <= 600) { //空格键
                 strcat(user_info.password_number_buf, " ");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 0 && input_x <= 100 && input_y >= 198 && input_y <= 254) { //Q键
                 strcat(user_info.password_number_buf, "Q");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 144 && input_x <= 210 && input_y >= 198 && input_y <= 254) { //W键
                 strcat(user_info.password_number_buf, "W");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 247 && input_x <= 301 && input_y >= 198 && input_y <= 254) { //E键
                 strcat(user_info.password_number_buf, "E");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 331 && input_x <= 400 && input_y >= 198 && input_y <= 254) { //R键
                 strcat(user_info.password_number_buf, "R");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 436 && input_x <= 495 && input_y >= 198 && input_y <= 254) { //T键
                 strcat(user_info.password_number_buf, "T");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 544 && input_x <= 600 && input_y >= 198 && input_y <= 254) { //Y键
                 strcat(user_info.password_number_buf, "Y");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 640 && input_x <= 694 && input_y >= 198 && input_y <= 254) { //U键
                 strcat(user_info.password_number_buf, "U");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 740 && input_x <= 797 && input_y >= 198 && input_y <= 254) { //I键
                 strcat(user_info.password_number_buf, "I");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 834 && input_x <= 900 && input_y >= 198 && input_y <= 254) { //O键
                 strcat(user_info.password_number_buf, "O");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 927 && input_x <= 1024 && input_y >= 198 && input_y <= 254) { //P键
                 strcat(user_info.password_number_buf, "P");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 104 && input_x <= 150 && input_y >= 297 && input_y <= 353) { //A键
                 strcat(user_info.password_number_buf, "A");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 194 && input_x <= 264 && input_y >= 297 && input_y <= 353) { //S键
                 strcat(user_info.password_number_buf, "S");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 291 && input_x <= 350 && input_y >= 297 && input_y <= 353) { //D键
                 strcat(user_info.password_number_buf, "D");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 385 && input_x <= 447 && input_y >= 297 && input_y <= 353) { //F键
                 strcat(user_info.password_number_buf, "F");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 489 && input_x <= 544 && input_y >= 297 && input_y <= 353) { //G键
                 strcat(user_info.password_number_buf, "G");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 589 && input_x <= 647 && input_y >= 297 && input_y <= 353) { //H键
                 strcat(user_info.password_number_buf, "H");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 697 && input_x <= 742 && input_y >= 297 && input_y <= 353) { //J键
                 strcat(user_info.password_number_buf, "J");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 789 && input_x <= 847 && input_y >= 297 && input_y <= 353) { //K键
                 strcat(user_info.password_number_buf, "K");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 894 && input_x <= 938 && input_y >= 297 && input_y <= 353) { //L键
                 strcat(user_info.password_number_buf, "L");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 155 && input_x <= 205 && input_y >= 400 && input_y <= 458) { //Z键
                 strcat(user_info.password_number_buf, "Z");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 249 && input_x <= 297 && input_y >= 400 && input_y <= 458) { //X键
                 strcat(user_info.password_number_buf, "X");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 342 && input_x <= 400 && input_y >= 400 && input_y <= 458) { //C键
                 strcat(user_info.password_number_buf, "C");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 445 && input_x <= 495 && input_y >= 400 && input_y <= 458) { //V键
                 strcat(user_info.password_number_buf, "V");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 541 && input_x <= 589 && input_y >= 400 && input_y <= 458) { //B键
                 strcat(user_info.password_number_buf, "B");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 641 && input_x <= 692 && input_y >= 400 && input_y <= 458) { //N键
                 strcat(user_info.password_number_buf, "N");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 739 && input_x <= 800 && input_y >= 400 && input_y <= 458) { //M键
                 strcat(user_info.password_number_buf, "M");
                 strcat(user_info.hide_password_number_buf, "*");
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
             if (input_x >= 0 && input_x <= 120 && input_y >= 393 && input_y <= 600) { //删除键
                 if (strlen(user_info.password_number_buf) > 0) {
@@ -3179,7 +3184,7 @@ void find_account_password_box()
                 if (strlen(user_info.hide_password_number_buf) > 0) {
                     user_info.hide_password_number_buf[strlen(user_info.hide_password_number_buf) - 1] = '\0';
                 }
-                input_changed = 1;  // 标记输入有变化
+                input_changed = 1;  
             }
 
             if (input_changed) {
@@ -3223,78 +3228,143 @@ void find_account_password_box()
     lcd_cleanup();
 }
 
-// 生成随机验证码
+/* 生成6位大写字母验证码 */ 
 void generate_random_code(char *code) {
-    srand(time(NULL));
     for (int i = 0; i < 6; i++) {
+        /* 'A' + rand() % 26，得到一个A到Z之间的大写字母 */
         code[i] = 'A' + rand() % 26;
     }
+    /* 第7个位置添加字符串结束符 */
     code[6] = '\0';
 }
 
-// 绘制验证码按钮
-void draw_code_button() {
+/* 更新倒计时显示 */ 
+void update_countdown_display() {
+    /* 初始化字库 */
+    if (lcd_init("/dev/fb0", "simkai.ttf") != 0) {
+        printf("初始化失败。\n");
+        return;
+    }
+
+    /* 检查验证码按钮可见，解决图层覆盖问题 */
     if (code_button_visible) {
+        /* 按钮被点击并且处于倒计时状态 */
         if (code_button_clicked && countdown > 0) {
-            char countdown_str[10];
-            sprintf(countdown_str, "%ds", countdown);
+            /* 倒计时字符串，用于展示倒计时 */
+            char countdown_str[12];
+            sprintf(countdown_str, "%6ds", countdown); /* 格式化字符串，时倒计时与“获取验证码”对齐 */ 
             lcd_render_text_with_box(
                 countdown_str,      /* 文本内容 */
-                500, 500,                /* 起始坐标 (x, y) */
-                COLOR_BLACK,             /* 文本颜色 */ 
-                COLOR_LIGHTGRAY,             /* 文本框背景颜色 */ 
-                0,                       /* 文本与文本框边缘的间距 */ 
-                BOX_STYLE_ROUNDED,     /* 矩形样式 */ 
-                15,                       /* 矩形样式不需要半径 */
-                30,                      /* 字体大小 */
-                150,                     /* 文本框宽度 */
-                30                        /* 文本框高度 */
+                355, 260,           /* 起始坐标 (x, y) */
+                COLOR_WHITE,        /* 文本颜色 */ 
+                COLOR_LIGHTGRAY,    /* 文本框背景颜色 */ 
+                10,                 /* 文本与文本框边缘的间距 */ 
+                BOX_STYLE_ROUNDED,  /* 圆角矩形样式 */ 
+                13,                 /* 圆角矩形半径 */
+                24,                 /* 字体大小 */
+                142,                /* 文本框宽度 */
+                46                  /* 文本框高度 */
             );
         } else {
+            /* 按钮未被点击或不在倒计时状态 */
             lcd_render_text_with_box(
-                "获取验证码",      /* 文本内容 */
-                500, 500,                /* 起始坐标 (x, y) */
-                COLOR_BLACK,             /* 文本颜色 */ 
-                COLOR_LIGHTGRAY,             /* 文本框背景颜色 */ 
-                0,                       /* 文本与文本框边缘的间距 */ 
-                BOX_STYLE_ROUNDED,     /* 矩形样式 */ 
-                15,                       /* 矩形样式不需要半径 */
-                30,                      /* 字体大小 */
-                150,                     /* 文本框宽度 */
-                30                        /* 文本框高度 */
+                "获取验证码",        /* 文本内容 */
+                355, 260,           /* 起始坐标 (x, y) */
+                COLOR_WHITE,        /* 文本颜色 */ 
+                COLOR_LIGHTGRAY,    /* 文本框背景颜色 */ 
+                10,                 /* 文本与文本框边缘的间距 */ 
+                BOX_STYLE_ROUNDED,  /* 圆角矩形样式 */ 
+                13,                 /* 圆角矩形半径 */
+                24,                 /* 字体大小 */
+                142,                /* 文本框宽度 */
+                46                  /* 文本框高度 */
             );
         }
     }
+
+    /* 清理lcd资源 */
+    lcd_cleanup();
 }
 
-// 验证码发送线程函数
+/* 停止验证码线程 */ 
+void stop_code_thread() {
+    /* 线程正在运行 */
+    if (thread_running) {
+        /* 设置标志让线程退出 */ 
+        code_button_clicked = 0;
+        /* 等待线程结束 */ 
+        pthread_join(code_thread, NULL);
+        /* 重置线程状态 */
+        thread_running = 0;
+    }
+}
+
+/* 验证码发送线程函数 */ 
 void *send_verification_code(void *arg) {
+    /* 标记线程开始启动 */
+    thread_running = 1;
+
+    /* 
+    * srand与rank
+    * rank:生成伪随机整数 返回值:int 每次需要随机数时调用
+    * srand:设置随机数种子 返回值:void 仅在程序开始时调用一次
+    * 
+    * srand必须在调用rand之前使用，否则将使用默认种子，
+    * time(NULL)作为种子，srand()用于初始化随机数种子，配合rand()生成随机数。
+    */
+    srand(time(NULL));
     while (1) {
+        /* 检查验证码按钮可见，但未被点击 */
         if (code_button_visible && !code_button_clicked) {
-            draw_code_button();
+            /* 更新验证码按钮为“获取验证码” */
+            update_countdown_display();
             ts_fun();
-            if (input_x >= 500 && input_x <= 600 && input_y >= 500 && input_y <= 550) {
-                code_button_clicked = 1;
-                countdown = 60;
-                char code[7];
-                generate_random_code(code);
-                printf("随机验证码: %s\n", code);
-                while (countdown > 0) {
-                    draw_code_button();
+            if (input_x >= 334 && input_x <= 490 && input_y >= 250 && input_y <= 300) {
+                /* 点击到了获取验证码按钮 */
+                code_button_clicked = 1;    /* 标记验证码按钮已被点击 */
+                start_time = time(NULL);    /* 记录开始时间，start_time用于存储时间戳 */ 
+                countdown = 60;             /* 重置倒计时位60s,即从“获取验证码”变成“60”的字样 */ 
+                char code[7];               /* 存储生成的随机验证码，留一位给换行符 */
+                generate_random_code(code); /* 生成随机验证码，并将结果存储在code数组中 */
+                printf("收到的验证码是: %s\n", code);
+                
+                /* 使用系统时间计算剩余时间，避免sleep累积误差 */ 
+                while (code_button_clicked) {
+                    /* 按钮一直处于被点击（倒计时状态） */
+                    time_t current_time = time(NULL);
+                    /* 计算从按钮点击开始到当前时间经过的秒数 */
+                    int elapsed_time = (int)(current_time - start_time);
+                    /* 计算剩余倒计时秒数 */
+                    countdown = 60 - elapsed_time;
+                    /* 如果剩余倒计时秒数小于等于 0，说明倒计时结束 */
+                    if (countdown <= 0) {
+                        countdown = 0;              /* 将倒计时变成0 */
+                        code_button_clicked = 0;    /* 重新获取验证码 */
+                    }
+                    /* 刷新倒计时显示 */
+                    update_countdown_display();
+                    /* 线程休眠1s */
                     sleep(1);
-                    countdown--;
                 }
-                code_button_clicked = 0;
             }
         }
-        usleep(100000); // 每 100ms 检查一次
+        /* 检查是否需要退出线程，如果thread_running为0则退出循环 */
+        if (!thread_running) break;
+        usleep(100000); /* 每100ms检查一次 */ 
     }
     return NULL;
 }
 
+/* 重置验证码按钮显示状态，防止图层覆盖 */ 
+void reset_verification_state() {
+    code_button_visible = 1;
+    code_button_clicked = 0;
+    countdown = 0;
+    update_countdown_display();
+}
+
 /* 找回界面验证码输入功能实现 */
 void find_account_verification() {
-    show_bmp_to_lcd("get_verification_code.bmp", 0, 0, 1024, 600);
 
     /* 初始化字库 */
     if (lcd_init("/dev/fb0", "simkai.ttf") != 0) {
@@ -3302,28 +3372,39 @@ void find_account_verification() {
         return;
     }
 
+    /* 加载图层 */
+    show_bmp_to_lcd("get_verification_code.bmp", 0, 0, 1024, 600);
+
     /* 账号背景文本框 */
     lcd_draw_filled_rectangle(
-        104, 248,       /* 左上角坐标 (x, y) */
-        386, 50,        /* 矩形宽度和高度 */
-        COLOR_WHITE     /* 填充颜色 */
+        104, 248,               /* 左上角坐标 (x, y) */
+        386, 50,                /* 矩形宽度和高度 */
+        COLOR_WHITE             /* 填充颜色 */
     );
     lcd_render_text(
-        "请输入六位数的验证码",                       /* 文本内容 */
-        104, 260,                           /* 起始坐标 (x, y) */
-        COLOR_LIGHTGRAY,                    /* 文本颜色 */
-        25                                  /* 字体大小 */
+        "请输入六位数验证码",     /* 文本内容 */
+        104, 260,               /* 起始坐标 (x, y) */
+        COLOR_LIGHTGRAY,        /* 文本颜色 */
+        25                      /* 字体大小 */
     );
-    //lcd_draw_filled_rectangle(110, 437, 100, 50, COLOR_LIGHTGRAY);
-    //lcd_render_text("获取验证码", 110, 437, COLOR_BLACK, 30);
 
-    // 创建验证码发送线程
-    pthread_t code_thread;
-    pthread_create(&code_thread, NULL, send_verification_code, NULL);
+    /* 创建新的验证码发送线程 */ 
+    if (pthread_create(&code_thread, NULL, send_verification_code, NULL) != 0) {
+        perror("Failed to create code thread.\n");
+        return;
+    }
 
     while (1) {
         ts_fun();
+        if (input_x >= 104 && input_x <= 225 && input_y >= 437 && input_y <= 484) {
+            /* 点击到修改密码按钮 */ 
+            find_account_judgment_2();
+            return;
+        }
+
+        /* 点击到输入验证码文本框 */
         if (input_x >= 104 && input_x <= 290 && input_y >= 248 && input_y <= 300) {
+            /* 隐藏验证码按钮 */
             code_button_visible = 0;
             keyboard();    /* 加载键盘 */
 
@@ -3337,42 +3418,41 @@ void find_account_verification() {
 
             /* 绘制验证码输入文本框背景 */
             lcd_draw_filled_rectangle(
-                0, 0,               /* 左上角坐标 (x, y) */
-                1024, 143,          /* 矩形宽度和高度 */
-                COLOR_WHITE         /* 填充颜色 */ 
+                0, 0,                               /* 左上角坐标 (x, y) */
+                1024, 143,                          /* 矩形宽度和高度 */
+                COLOR_WHITE                         /* 填充颜色 */ 
             );
             /* 绘制验证码输入文本框 */
             lcd_render_text_with_box(
-                user_info.verification_code_buf,      /* 文本内容 */
-                70, 51,                /* 起始坐标 (x, y) */
-                COLOR_BLACK,             /* 文本颜色 */ 
-                COLOR_WHITE,             /* 文本框背景颜色 */ 
-                0,                       /* 文本与文本框边缘的间距 */ 
-                BOX_STYLE_RECTANGLE,     /* 矩形样式 */ 
-                0,                       /* 矩形样式不需要半径 */
-                60,                      /* 字体大小 */
-                0,                     /* 文本框宽度 */
-                0                       /* 文本框高度 */
+                user_info.verification_code_buf,    /* 文本内容 */
+                70, 51,                             /* 起始坐标 (x, y) */
+                COLOR_BLACK,                        /* 文本颜色 */ 
+                COLOR_WHITE,                        /* 文本框背景颜色 */ 
+                0,                                  /* 文本与文本框边缘的间距 */ 
+                BOX_STYLE_RECTANGLE,                /* 矩形样式 */ 
+                0,                                  /* 矩形样式不需要半径 */
+                60,                                 /* 字体大小 */
+                0,                                  /* 文本框宽度 */
+                0                                   /* 文本框高度 */
             );
             /* 绘制确认按钮 */
             lcd_render_text_with_box(
-                "确认",      /* 文本内容 */
-                800, 51,                /* 起始坐标 (x, y) */
-                COLOR_WHITE,             /* 文本颜色 */ 
-                COLOR_LIGHTGRAY,             /* 文本框背景颜色 */ 
-                0,                       /* 文本与文本框边缘的间距 */ 
-                BOX_STYLE_ROUNDED,     /* 矩形样式 */ 
-                15,                       /* 矩形样式不需要半径 */
-                60,                      /* 字体大小 */
-                0,                     /* 文本框宽度 */
-                0                        /* 文本框高度 */
+                "确认",                             /* 文本内容 */
+                800, 51,                            /* 起始坐标 (x, y) */
+                COLOR_WHITE,                        /* 文本颜色 */ 
+                COLOR_LIGHTGRAY,                    /* 文本框背景颜色 */ 
+                0,                                  /* 文本与文本框边缘的间距 */ 
+                BOX_STYLE_ROUNDED,                  /* 圆角矩形样式 */ 
+                15,                                 /* 圆角矩形半径 */
+                60,                                 /* 字体大小 */
+                0,                                  /* 文本框宽度 */
+                0                                   /* 文本框高度 */
             );
 
             struct input_event input_buf;
-
             while (1) {
-                int input_changed = 0;  // 标记输入是否有变化
-                // 读取触摸屏数据
+                int input_changed = 0;  /* 标记输入是否有变化 */ 
+                /* 读取触摸屏数据 */ 
                 read(input_fd, &input_buf, sizeof(input_buf));
                 if (input_buf.type == EV_ABS && input_buf.code == ABS_X) {
                     input_x = input_buf.value;
@@ -3381,41 +3461,69 @@ void find_account_verification() {
                     input_y = input_buf.value;
                 }
                 if (input_buf.type == EV_KEY && input_buf.code == BTN_TOUCH && input_buf.value == 0) {
-                    // 判断是否点击了确认按钮
                     if ((input_x >= 800 && input_x <= 900 && input_y >= 51 && input_y <= 111) || 
-                        (input_x >= 876 && input_x <= 1024 && input_y >= 400 && input_y <= 600)) {  /* 确认按钮和确认键 */
+                        (input_x >= 876 && input_x <= 1024 && input_y >= 400 && input_y <= 600)) { 
                         /* 处理确认按钮点击事件 */ 
-                        if (strlen(user_info.verification_code_buf) == 0) {
-                            show_bmp_to_lcd("get_verification_code.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
 
+                        /* 若验证码为空 */
+                        if (strlen(user_info.verification_code_buf) == 0) {
+                            /* 验证码长度不为6 */
+                            lcd_render_text_with_box(
+                                "验证码为空，请重新获取验证码！",     /* 文本内容 */
+                                310, 400,                       /* 起始坐标 (x, y) */
+                                COLOR_WHITE,                    /* 文本颜色 */
+                                COLOR_LIGHTGRAY,                /* 文本框背景颜色 */
+                                10,                             /* 文本与文本框边缘的间距 */
+                                BOX_STYLE_ROUNDED,              /* 圆角样式 */
+                                15,                             /* 圆角半径 */
+                                30,                             /* 字体大小 */
+                                0,                              /* 文本框宽度 */
+                                0                               /* 文本框高度 */
+                            );
+                            sleep(3);
+                            find_account_allow_flags = 0;
+                            memset(user_info.verification_code_buf, 0, sizeof(user_info.verification_code_buf));
+                            /* 重置验证码显示，但不重新调用find_account_verification */ 
+                            reset_verification_state();
+                            show_bmp_to_lcd("get_verification_code.bmp", 0, 0, 1024, 600);
                             /* 验证码背景文本框 */
                             lcd_draw_filled_rectangle(
-                                104, 248,       /* 左上角坐标 (x, y) */
-                                386, 50,        /* 矩形宽度和高度 */
-                                COLOR_WHITE     /* 填充颜色 */
+                                104, 248, 
+                                386, 50, 
+                                COLOR_WHITE
                             );
                             lcd_render_text(
-                                "请输入六位数的验证码",                       /* 文本内容 */
-                                104, 260,                           /* 起始坐标 (x, y) */
-                                COLOR_LIGHTGRAY,                    /* 文本颜色 */
-                                25                                  /* 字体大小 */
-                            );            
+                                "请输入六位数验证码", 
+                                104, 260, 
+                                COLOR_LIGHTGRAY, 
+                                25
+                            );
+                            code_button_visible = 1;        /* 验证码按钮可见标记 */
+                            update_countdown_display();     /* 更新验证码按钮为可见状态 */
+                            break;  /* 退出键盘输入循环 */           
                         } else if (strlen(user_info.verification_code_buf) == 6) {
-                            show_bmp_to_lcd("get_verification_code.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
+                            /* 验证码的长度是6 */
+                            show_bmp_to_lcd("get_verification_code.bmp", 0, 0, 1024, 600);    
                             /* 验证码输入文本框 */ 
                             lcd_render_text_with_box(
-                                user_info.verification_code_buf,      /* 文本内容 */
-                                104, 248,                /* 起始坐标 (x, y) */
-                                COLOR_BLACK,             /* 文本颜色 */ 
-                                COLOR_WHITE,             /* 文本框背景颜色 */ 
-                                0,                       /* 文本与文本框边缘的间距 */ 
-                                BOX_STYLE_RECTANGLE,     /* 矩形样式 */ 
-                                0,                       /* 矩形样式不需要半径 */
-                                50,                      /* 字体大小 */
-                                386,                     /* 文本框宽度 */
-                                50                       /* 文本框高度 */
-                            );  
+                                user_info.verification_code_buf,     /* 文本内容 */
+                                104, 248,                            /* 起始坐标 (x, y) */
+                                COLOR_BLACK,                         /* 文本颜色 */ 
+                                COLOR_WHITE,                         /* 文本框背景颜色 */ 
+                                0,                                   /* 文本与文本框边缘的间距 */ 
+                                BOX_STYLE_RECTANGLE,                 /* 矩形样式 */ 
+                                0,                                   /* 矩形样式不需要半径 */
+                                50,                                  /* 字体大小 */
+                                386,                                 /* 文本框宽度 */
+                                50                                   /* 文本框高度 */
+                            );
+                            /* 点击到修改密码 */
+                            if (input_x >= 104 && input_x <= 225 && input_y >= 437 && input_y <= 484) {
+                                find_account_judgment_2();
+                                return;
+                            }
                         } else {
+                            /* 验证码长度不为6 */
                             lcd_render_text_with_box(
                                 "验证码有误，请重新输入",     /* 文本内容 */
                                 310, 400,                       /* 起始坐标 (x, y) */
@@ -3429,163 +3537,179 @@ void find_account_verification() {
                                 0                               /* 文本框高度 */
                             );
                             sleep(3);
-                            find_account_success_flags = 0;
+                            find_account_allow_flags = 0;
                             memset(user_info.verification_code_buf, 0, sizeof(user_info.verification_code_buf));
-                            find_account_verification(); /* 重新验证 */
-                            close(input_fd);
-                            return;
+                            /* 重置验证码显示，但不重新调用find_account_verification */ 
+                            reset_verification_state();
+                            show_bmp_to_lcd("get_verification_code.bmp", 0, 0, 1024, 600);
+                            /* 验证码背景文本框 */
+                            lcd_draw_filled_rectangle(
+                                104, 248, 
+                                386, 50, 
+                                COLOR_WHITE
+                            );
+                            lcd_render_text(
+                                "请输入六位数验证码", 
+                                104, 260, 
+                                COLOR_LIGHTGRAY, 
+                                25
+                            );
+                            break;  /* 退出键盘输入循环 */ 
+                            code_button_visible = 1;        /* 验证码按钮可见标记 */
+                            update_countdown_display();     /* 更新验证码按钮为可见状态 */
                         }
-                        code_button_visible = 1;
-                        draw_code_button();
-                        break;  
+                        /* 防止输入到正确六位数密码后不显示验证码按钮 */
+                        code_button_visible = 1;        /* 验证码按钮可见标记 */
+                        update_countdown_display();     /* 更新验证码按钮为可见状态 */
+                        break;
                     }
 
-                    // 处理键盘点击事件
+                    /* 处理键盘点击事件 */ 
                     if (input_x >= 224 && input_x <= 810 && input_y >= 503 && input_y <= 600) { //空格键
                         strcat(user_info.verification_code_buf, " ");
-                        input_changed = 1;  // 标记输入有变化
+                        input_changed = 1;  /* 标记输入有变化 */ 
                     }
                     if (input_x >= 0 && input_x <= 100 && input_y >= 198 && input_y <= 254) { //Q键
                         strcat(user_info.verification_code_buf, "Q");
-                        input_changed = 1;  // 标记输入有变化
+                        input_changed = 1;  
                     }
                     if (input_x >= 144 && input_x <= 210 && input_y >= 198 && input_y <= 254) { //W键
                         strcat(user_info.verification_code_buf, "W");
-                        input_changed = 1;  // 标记输入有变化
+                        input_changed = 1;  
                     }
                     if (input_x >= 247 && input_x <= 301 && input_y >= 198 && input_y <= 254) { //E键
                         strcat(user_info.verification_code_buf, "E");
-                        input_changed = 1;  // 标记输入有变化
+                        input_changed = 1;  
                     }
                     if (input_x >= 331 && input_x <= 400 && input_y >= 198 && input_y <= 254) { //R键
                         strcat(user_info.verification_code_buf, "R");
-                        input_changed = 1;  // 标记输入有变化
+                        input_changed = 1;  
                     }
                     if (input_x >= 436 && input_x <= 495 && input_y >= 198 && input_y <= 254) { //T键
                         strcat(user_info.verification_code_buf, "T");
-                        input_changed = 1;  // 标记输入有变化
+                        input_changed = 1;  
                     }
                     if (input_x >= 544 && input_x <= 600 && input_y >= 198 && input_y <= 254) { //Y键
                         strcat(user_info.verification_code_buf, "Y");
-                        input_changed = 1;  // 标记输入有变化
+                        input_changed = 1;  
                     }
                     if (input_x >= 640 && input_x <= 694 && input_y >= 198 && input_y <= 254) { //U键
                         strcat(user_info.verification_code_buf, "U");
-                        input_changed = 1;  // 标记输入有变化
+                        input_changed = 1;  
                     }
                     if (input_x >= 740 && input_x <= 797 && input_y >= 198 && input_y <= 254) { //I键
                         strcat(user_info.verification_code_buf, "I");
-                        input_changed = 1;  // 标记输入有变化
+                        input_changed = 1;  
                     }
                     if (input_x >= 834 && input_x <= 900 && input_y >= 198 && input_y <= 254) { //O键
                         strcat(user_info.verification_code_buf, "O");
-                        input_changed = 1;  // 标记输入有变化
+                        input_changed = 1;  
                     }
                     if (input_x >= 927 && input_x <= 1024 && input_y >= 198 && input_y <= 254) { //P键
                         strcat(user_info.verification_code_buf, "P");
-                        input_changed = 1;  // 标记输入有变化
+                        input_changed = 1;  
                     }
                     if (input_x >= 104 && input_x <= 150 && input_y >= 297 && input_y <= 353) { //A键
                         strcat(user_info.verification_code_buf, "A");
-                        input_changed = 1;  // 标记输入有变化
+                        input_changed = 1;  
                     }
                     if (input_x >= 194 && input_x <= 264 && input_y >= 297 && input_y <= 353) { //S键
                         strcat(user_info.verification_code_buf, "S");
-                        input_changed = 1;  // 标记输入有变化
+                        input_changed = 1;  
                     }
                     if (input_x >= 291 && input_x <= 350 && input_y >= 297 && input_y <= 353) { //D键
                         strcat(user_info.verification_code_buf, "D");
-                        input_changed = 1;  // 标记输入有变化
+                        input_changed = 1;  
                     }
                     if (input_x >= 385 && input_x <= 447 && input_y >= 297 && input_y <= 353) { //F键
                         strcat(user_info.verification_code_buf, "F");
-                        input_changed = 1;  // 标记输入有变化
+                        input_changed = 1;  
                     }
                     if (input_x >= 489 && input_x <= 544 && input_y >= 297 && input_y <= 353) { //G键
                         strcat(user_info.verification_code_buf, "G");
-                        input_changed = 1;  // 标记输入有变化
+                        input_changed = 1;  
                     }
                     if (input_x >= 589 && input_x <= 647 && input_y >= 297 && input_y <= 353) { //H键
                         strcat(user_info.verification_code_buf, "H");
-                        input_changed = 1;  // 标记输入有变化
+                        input_changed = 1;  
                     }
                     if (input_x >= 697 && input_x <= 742 && input_y >= 297 && input_y <= 353) { //J键
                         strcat(user_info.verification_code_buf, "J");
-                        input_changed = 1;  // 标记输入有变化
+                        input_changed = 1;  
                     }
                     if (input_x >= 789 && input_x <= 847 && input_y >= 297 && input_y <= 353) { //K键
                         strcat(user_info.verification_code_buf, "K");
-                        input_changed = 1;  // 标记输入有变化
+                        input_changed = 1;  
                     }
                     if (input_x >= 894 && input_x <= 938 && input_y >= 297 && input_y <= 353) { //L键
                         strcat(user_info.verification_code_buf, "L");
-                        input_changed = 1;  // 标记输入有变化
+                        input_changed = 1;  
                     }
                     if (input_x >= 155 && input_x <= 205 && input_y >= 400 && input_y <= 458) { //Z键
                         strcat(user_info.verification_code_buf, "Z");
-                        input_changed = 1;  // 标记输入有变化
+                        input_changed = 1;  
                     }
                     if (input_x >= 249 && input_x <= 297 && input_y >= 400 && input_y <= 458) { //X键
                         strcat(user_info.verification_code_buf, "X");
-                        input_changed = 1;  // 标记输入有变化
+                        input_changed = 1;  
                     }
                     if (input_x >= 342 && input_x <= 400 && input_y >= 400 && input_y <= 458) { //C键
                         strcat(user_info.verification_code_buf, "C");
-                        input_changed = 1;  // 标记输入有变化
+                        input_changed = 1;  
                     }
                     if (input_x >= 445 && input_x <= 495 && input_y >= 400 && input_y <= 458) { //V键
                         strcat(user_info.verification_code_buf, "V");
-                        input_changed = 1;  // 标记输入有变化
+                        input_changed = 1;  
                     }
                     if (input_x >= 541 && input_x <= 589 && input_y >= 400 && input_y <= 458) { //B键
                         strcat(user_info.verification_code_buf, "B");
-                        input_changed = 1;  // 标记输入有变化
+                        input_changed = 1;  
                     }
                     if (input_x >= 641 && input_x <= 692 && input_y >= 400 && input_y <= 458) { //N键
                         strcat(user_info.verification_code_buf, "N");
-                        input_changed = 1;  // 标记输入有变化
+                        input_changed = 1;  
                     }
                     if (input_x >= 739 && input_x <= 800 && input_y >= 400 && input_y <= 458) { //M键
                         strcat(user_info.verification_code_buf, "M");
-                        input_changed = 1;  // 标记输入有变化
+                        input_changed = 1;  
                     }
                     if (input_x >= 0 && input_x <= 120 && input_y >= 393 && input_y <= 600) { //删除键
                         if (strlen(user_info.verification_code_buf) > 0) {
                             user_info.verification_code_buf[strlen(user_info.verification_code_buf) - 1] = '\0';
                         }
-                        input_changed = 1;  // 标记输入有变化
+                        input_changed = 1;  
                     }
 
+                    /* 标记输入有变化 */
                     if (input_changed) {
                         lcd_draw_filled_rectangle(
-                            0, 0,               /* 左上角坐标 (x, y) */
-                            1024, 143,          /* 矩形宽度和高度 */
-                            COLOR_WHITE         /* 填充颜色 */ 
+                            0, 0,                               /* 左上角坐标 (x, y) */
+                            1024, 143,                          /* 矩形宽度和高度 */
+                            COLOR_WHITE                         /* 填充颜色 */ 
                         );
                         lcd_render_text_with_box(
-                            user_info.verification_code_buf,      /* 文本内容 */
-                            70, 51,                /* 起始坐标 (x, y) */
-                            COLOR_BLACK,             /* 文本颜色 */ 
-                            COLOR_WHITE,             /* 文本框背景颜色 */ 
-                            0,                       /* 文本与文本框边缘的间距 */ 
-                            BOX_STYLE_RECTANGLE,     /* 矩形样式 */ 
-                            0,                       /* 矩形样式不需要半径 */
-                            60,                      /* 字体大小 */
-                            0,                     /* 文本框宽度 */
-                            0                       /* 文本框高度 */
+                            user_info.verification_code_buf,    /* 文本内容 */
+                            70, 51,                             /* 起始坐标 (x, y) */
+                            COLOR_BLACK,                        /* 文本颜色 */ 
+                            COLOR_WHITE,                        /* 文本框背景颜色 */ 
+                            0,                                  /* 文本与文本框边缘的间距 */ 
+                            BOX_STYLE_RECTANGLE,                /* 矩形样式 */ 
+                            0,                                  /* 矩形样式不需要半径 */
+                            60,                                 /* 字体大小 */
+                            0,                                  /* 文本框宽度 */
+                            0                                   /* 文本框高度 */
                         );        
-                        /* 确认按钮 */
                         lcd_render_text_with_box(
-                            "确认",      /* 文本内容 */
-                            800, 51,                /* 起始坐标 (x, y) */
-                            COLOR_WHITE,             /* 文本颜色 */ 
-                            COLOR_LIGHTGRAY,             /* 文本框背景颜色 */ 
-                            0,                       /* 文本与文本框边缘的间距 */ 
-                            BOX_STYLE_ROUNDED,     /* 矩形样式 */ 
-                            15,                       /* 矩形样式不需要半径 */
-                            60,                      /* 字体大小 */
-                            0,                     /* 文本框宽度 */
-                            0                        /* 文本框高度 */
+                            "确认",                             /* 文本内容 */
+                            800, 51,                            /* 起始坐标 (x, y) */
+                            COLOR_WHITE,                        /* 文本颜色 */ 
+                            COLOR_LIGHTGRAY,                    /* 文本框背景颜色 */ 
+                            0,                                  /* 文本与文本框边缘的间距 */ 
+                            BOX_STYLE_ROUNDED,                  /* 圆角矩形样式 */ 
+                            15,                                 /* 圆角矩形半径 */
+                            60,                                 /* 字体大小 */
+                            0,                                  /* 文本框宽度 */
+                            0                                   /* 文本框高度 */
                         );
                     }
                 }
@@ -3593,14 +3717,16 @@ void find_account_verification() {
             close(input_fd);
         }
     }
-}
 
+    /* 清理lcd资源 */
+    lcd_cleanup();
+}
 
 /* 桌面功能实现 */
 void home_fun() {
-    login_success_flags = 0;  // 重置标志位
+    login_allow_flags = 0;  // 重置标志位
     skip_login_boot_flags = 0;
-    register_success_flags = 0;
+    register_allow_flags = 0;
     /* 显示桌面 */  
     show_bmp_to_lcd("home.bmp", 0, 0, 1024, 600);
     while(1) {
@@ -3804,7 +3930,6 @@ void find_account_boot()
     /* 清理资源 */ 
     lcd_cleanup();
 }
-
 
 /* 登录判断 */ 
 void login_judgment() {
@@ -4031,7 +4156,7 @@ void login_judgment() {
         
         memset(&user_info, 0, sizeof(user_info));
         memset(&login_user_info, 0, sizeof(login_user_info));
-        login_success_flags = 1;
+        login_allow_flags = 1;
         skip_login_boot_flags = 1;
     } else {
         /* 密码错误，增加错误次数 */ 
@@ -4084,7 +4209,7 @@ void login_judgment() {
         
         memset(&user_info, 0, sizeof(user_info));
         memset(&login_user_info, 0, sizeof(login_user_info));
-        login_success_flags = 0;
+        login_allow_flags = 0;
         login_boot(); // 返回登录界面
     }
 }
@@ -4097,7 +4222,7 @@ void register_judgment() {
         return;
     }
     /* 满足所有注册条件时 */
-    if (register_success_flags == 1) {
+    if (register_allow_flags == 1) {
         /*
         * 已经提前校验输入的合法性，只剩下一个问题，是否有重复的账号，对吧，
         * 因此此处再进行校验是否存在账号，若存在，不允许注册。
@@ -4133,7 +4258,7 @@ void register_judgment() {
             memset(temp_account_number_buf, 0, sizeof(temp_account_number_buf));
             memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
             memset(user_info.hide_password_number_buf, 0, sizeof(user_info.hide_password_number_buf));
-            register_success_flags = 0;
+            register_allow_flags = 0;
             register_boot();
             return;
         }
@@ -4171,12 +4296,12 @@ void register_judgment() {
         memset(user_data_buf, 0, sizeof(user_data_buf));
         memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
         memset(user_info.hide_password_number_buf, 0, sizeof(user_info.hide_password_number_buf));
-        register_success_flags = 0; /* 重置注册成功标志位 */
+        register_allow_flags = 0; /* 重置注册成功标志位 */
         skip_register_boot_flags = 1;
         close(user_data_fd);
         login_boot();
         return;
-    } else if (register_success_flags == 0) {
+    } else if (register_allow_flags == 0) {
         /* 账号或密码为空时 */
         lcd_render_text_with_box(
             "账号或密码为空，请重新注册",     /* 文本内容 */
@@ -4222,7 +4347,7 @@ void find_account_judgment_1()
         return;
     }
 
-    if (find_account_success_flags == 1) {
+    if (find_account_allow_flags == 1) {
         /* 存放用户输入的账号（用于判断是否存在该用户） */
         char temp_account_number_buf[128] = {0};
         /* 存放拼接后的账号 */
@@ -4275,7 +4400,7 @@ void find_account_judgment_1()
             sleep(3);
             memset(&user_info, 0, sizeof(user_info));
             memset(temp_account_number_buf, 0, sizeof(temp_account_number_buf));
-            find_account_success_flags = 0;
+            find_account_allow_flags = 0;
             find_account_boot();
             return;
         } else {
@@ -4325,7 +4450,7 @@ void find_account_judgment_1()
         );
         sleep(3);
         memset(&user_info, 0, sizeof(user_info));
-        find_account_success_flags = 0;
+        find_account_allow_flags = 0;
         find_account_boot();
         return;
     }
@@ -4345,7 +4470,7 @@ void find_account_judgment_2()
 
 /* 游戏引导页面 */
 void game_start_home() {
-    login_success_flags = 0;
+    login_allow_flags = 0;
     show_bmp_to_lcd("1.bmp", 0, 0, 1024, 600);
 }
 
