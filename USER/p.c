@@ -1,7 +1,7 @@
 /*************************************************************************************************************
 File name: p.c
 Author: KD
-Version: V_4.4
+Version: V_4.5
 Build date: 2024-07-07
 Description: NONE
 Others: Usage requires preservation of original author attribution.
@@ -11,6 +11,7 @@ Log: 1.优化账号注册界面位数的注册逻辑
      4.新增验证码一级与二级界面
      5.新增获取验证码的逻辑
      6.修复验证码获取时图层覆盖的问题
+     7.修复有账号时空密码点击确定不渲染文本框的问题
 bug: you tell me!
 *************************************************************************************************************/
 
@@ -905,16 +906,16 @@ void input_password_box()
                         );
                     }           
                 } else {
+                    /* 非空账号 */
                     if (strlen(user_info.password_number_buf) >= 8 && strlen(user_info.password_number_buf) <= 12) {
                         /* 仅当密码符合条件时才显示图层 */
                         show_bmp_to_lcd("login_initialization.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
-                        /* 账号背景文本框 */
+                        /* 渲染账号背景文本框 */
                         lcd_draw_filled_rectangle(
                             104, 248,       /* 左上角坐标 (x, y) */
                             386, 50,        /* 矩形宽度和高度 */
                             COLOR_WHITE     /* 填充颜色 */
                         );
-                        /* 账号输入文本框 */ 
                         lcd_render_text_with_box(
                             user_info.account_number_buf,      /* 文本内容 */
                             104, 248,                /* 起始坐标 (x, y) */
@@ -972,6 +973,25 @@ void input_password_box()
                             104, 260,                   /* 起始坐标 (x, y) */
                             COLOR_LIGHTGRAY,            /* 文本颜色 */
                             25                          /* 字体大小 */
+                        );
+                    } else {
+                        /* 渲染账号背景文本框 */
+                        lcd_draw_filled_rectangle(
+                            104, 248,       /* 左上角坐标 (x, y) */
+                            386, 50,        /* 矩形宽度和高度 */
+                            COLOR_WHITE     /* 填充颜色 */
+                        );
+                        lcd_render_text_with_box(
+                            user_info.account_number_buf,      /* 文本内容 */
+                            104, 248,                /* 起始坐标 (x, y) */
+                            COLOR_BLACK,             /* 文本颜色 */ 
+                            COLOR_WHITE,             /* 文本框背景颜色 */ 
+                            0,                       /* 文本与文本框边缘的间距 */ 
+                            BOX_STYLE_RECTANGLE,     /* 矩形样式 */ 
+                            0,                       /* 矩形样式不需要半径 */
+                            50,                      /* 字体大小 */
+                            386,                     /* 文本框宽度 */
+                            50                       /* 文本框高度 */
                         );
                     }
 
@@ -1054,6 +1074,7 @@ void input_password_box()
                         386,                                /* 文本框宽度 */
                         50                                  /* 文本框高度 */
                     );
+
                     show_bmp_to_lcd("hide_password.bmp", 448, 315, 40, 40);
                     while (3) {
                         ts_fun();
@@ -1455,7 +1476,7 @@ void register_account_box()
                     register_allow_flags = 0;
                     memset(user_info.account_number_buf, 0, sizeof(user_info.account_number_buf));
                     memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
-                    memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
+                    memset(user_info.hide_password_number_buf, 0, sizeof(user_info.hide_password_number_buf));
                     /* 重新注册 */
                     register_account_box(); 
                     return;
@@ -1915,6 +1936,7 @@ void register_password_box()
                         );
                     }
                 } else {
+                    /* 非空账号 */
                     if (strlen(user_info.password_number_buf) >= 8 && strlen(user_info.password_number_buf) <= 12) {
                         /* 加载背景图层 */
                         show_bmp_to_lcd("login_initialization.bmp", 0, 0, 1024, 600);    
@@ -1980,6 +2002,25 @@ void register_password_box()
                             104, 260,               /* 起始坐标 (x, y) */
                             COLOR_LIGHTGRAY,        /* 文本颜色 */
                             25                      /* 字体大小 */
+                        );
+                    } else {
+                        /* 渲染账号背景文本框 */
+                        lcd_draw_filled_rectangle(
+                            104, 248,       /* 左上角坐标 (x, y) */
+                            386, 50,        /* 矩形宽度和高度 */
+                            COLOR_WHITE     /* 填充颜色 */
+                        );
+                        lcd_render_text_with_box(
+                            user_info.account_number_buf,      /* 文本内容 */
+                            104, 248,                /* 起始坐标 (x, y) */
+                            COLOR_BLACK,             /* 文本颜色 */ 
+                            COLOR_WHITE,             /* 文本框背景颜色 */ 
+                            0,                       /* 文本与文本框边缘的间距 */ 
+                            BOX_STYLE_RECTANGLE,     /* 矩形样式 */ 
+                            0,                       /* 矩形样式不需要半径 */
+                            50,                      /* 字体大小 */
+                            386,                     /* 文本框宽度 */
+                            50                       /* 文本框高度 */
                         );
                     }
                     
@@ -2080,6 +2121,7 @@ void register_password_box()
                         386,                                    /* 文本框宽度 */
                         50                                      /* 文本框高度 */
                     );
+
                     show_bmp_to_lcd("hide_password.bmp", 448, 315, 40, 40);
                     while (3) {
                         ts_fun();
@@ -2968,6 +3010,25 @@ void find_account_password_box()
                             104, 260,                   /* 起始坐标 (x, y) */
                             COLOR_LIGHTGRAY,            /* 文本颜色 */
                             25                          /* 字体大小 */
+                        );
+                    } else {
+                        /* 渲染账号背景文本框 */
+                        lcd_draw_filled_rectangle(
+                            104, 248,       /* 左上角坐标 (x, y) */
+                            386, 50,        /* 矩形宽度和高度 */
+                            COLOR_WHITE     /* 填充颜色 */
+                        );
+                        lcd_render_text_with_box(
+                            user_info.account_number_buf,      /* 文本内容 */
+                            104, 248,                /* 起始坐标 (x, y) */
+                            COLOR_BLACK,             /* 文本颜色 */ 
+                            COLOR_WHITE,             /* 文本框背景颜色 */ 
+                            0,                       /* 文本与文本框边缘的间距 */ 
+                            BOX_STYLE_RECTANGLE,     /* 矩形样式 */ 
+                            0,                       /* 矩形样式不需要半径 */
+                            50,                      /* 字体大小 */
+                            386,                     /* 文本框宽度 */
+                            50                       /* 文本框高度 */
                         );
                     }
 
@@ -4064,7 +4125,7 @@ void login_judgment() {
     if (user_data_fd == -1) {
         /* 账号不存在处理 */
         lcd_render_text_with_box(
-            "该账号不存在，请重新输入!", 
+            "该账号不存在，请先注册!", 
             340, 400, 
             COLOR_WHITE, 
             COLOR_LIGHTGRAY, 
@@ -4643,6 +4704,27 @@ void find_account_judgment_2()
             skip_find_account_boot_flags = 1;
             stop_code_thread();
             login_boot();
+            return;
+        } else {
+            /* 验证码为空时 */
+            lcd_render_text_with_box(
+                "验证码错误，请重新获取验证码！",              /* 文本内容 */
+                340, 400,                                   /* 起始坐标 (x, y) */
+                COLOR_WHITE,                                /* 文本颜色 */
+                COLOR_LIGHTGRAY,                            /* 文本框背景颜色 */
+                10,                                         /* 文本与文本框边缘的间距 */
+                BOX_STYLE_ROUNDED,                          /* 圆角矩形样式 */
+                15,                                         /* 圆角矩形半径 */
+                30,                                         /* 字体大小 */
+                0,                                          /* 文本框宽度 */
+                0                                           /* 文本框高度 */
+            );
+            sleep(3);
+            memset(user_info.verification_code_buf, 0, sizeof(user_info.verification_code_buf));
+            memset(code, 0, sizeof(code));
+            find_account_allow_flags = 0;
+            find_account_verification();
+            stop_code_thread();
             return;
         }
     } else {
