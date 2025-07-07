@@ -1,7 +1,7 @@
 /*************************************************************************************************************
 File name: p.c
 Author: KD
-Version: V_4.3
+Version: V_4.4
 Build date: 2024-07-07
 Description: NONE
 Others: Usage requires preservation of original author attribution.
@@ -11,9 +11,7 @@ Log: 1.优化账号注册界面位数的注册逻辑
      4.新增验证码一级与二级界面
      5.新增获取验证码的逻辑
      6.修复验证码获取时图层覆盖的问题
-bug: 
-     1.部分函数没有清理lcd资源
-     2.部分屏幕文本提示未对齐
+bug: you tell me!
 *************************************************************************************************************/
 
 #include <stdio.h>
@@ -80,7 +78,12 @@ void game_start_home();
 void ts_fun()
 {   
     /* 打开触摸屏文件 */
-    int input_fd = open("/dev/input/event1", O_RDWR);       
+    int input_fd = open("/dev/input/event1", O_RDWR);
+    if (input_fd == -1) {
+        printf("Failed to open touchscreen device.\n");
+        return;
+    }
+    
     struct input_event input_buf;
     while(1) {
         /* 读取触摸屏数据: input_buf */
@@ -104,6 +107,8 @@ void ts_fun()
                 break;
             }
     }
+
+    /* 关闭文件描述符 */
     close(input_fd);
 }
 
@@ -111,23 +116,23 @@ void ts_fun()
 void not_open_game_notification() 
 {
     /* 初始化字库 */
-    if (lcd_init("/dev/fb0", "simkai.ttf")!= 0) {
-        printf("初始化失败。\n");
+    if (lcd_init("/dev/fb0", "simkai.ttf") != 0) {
+        printf("Font library initialization failed.\n");
         return;
     } 
 
-    /* 测试圆角文本框（不同半径） */ 
+    /* LCD屏幕提示 */ 
     lcd_render_text_with_box(
         "未点击到游戏，请重试！",   /* 文本内容 */
         350, 400,                 /* 起始坐标 (x, y) */
         COLOR_WHITE,              /* 文本颜色 */
         COLOR_LIGHTGRAY,          /* 文本框背景颜色 */
         10,                       /* 文本与文本框边缘的间距 */
-        BOX_STYLE_ROUNDED,        /* 圆角样式 */
-        15,                       /* 圆角半径 */
+        BOX_STYLE_ROUNDED,        /* 圆角矩形样式 */
+        15,                       /* 圆角矩形半径 */
         30,                       /* 字体大小 */
-        0,                        /* 文本框宽度，为 0 时，文本框大小依照文字大小与文本量大小调整，文字居中对齐 */
-        0                         /* 文本框高度，为 0 时，文本框大小依照文字大小与文本量大小调整，文字居中对齐 */
+        0,                        /* 文本框宽度，为0时，文本框大小依照文字大小与文本量大小调整，文字居中对齐 */
+        0                         /* 文本框高度，为0时，文本框大小依照文字大小与文本量大小调整，文字居中对齐 */
     );
 
     /* 清理资源 */ 
@@ -137,13 +142,15 @@ void not_open_game_notification()
 /* 调用虚拟键盘 */
 void keyboard() 
 {
+    /* 初始化字库 */
     if (lcd_init("/dev/fb0", "simkai.ttf") != 0) {
-        printf("初始化失败。\n");
+        printf("Font library initialization failed.\n");
         return;
     }
 
+    /* 渲染虚拟键盘背景 */
     lcd_draw_filled_rectangle(0, 130, 1024, 600, COLOR_WHITE);  
-
+    /* 渲染虚拟键盘文字排布 */
     lcd_render_text("Q", 50, 200, COLOR_BLACK, 50);
     lcd_render_text("W", 150, 200, COLOR_BLACK, 50);
     lcd_render_text("E", 250, 200, COLOR_BLACK, 50);
@@ -166,6 +173,7 @@ void keyboard()
     lcd_render_text("L", 900, 300, COLOR_BLACK, 50);
 
     lcd_render_text("删", 50, 400, COLOR_BLACK, 50);
+    lcd_render_text("除", 50, 500, COLOR_BLACK, 50);
     lcd_render_text("Z", 150, 400, COLOR_BLACK, 50);
     lcd_render_text("X", 250, 400, COLOR_BLACK, 50);
     lcd_render_text("C", 350, 400, COLOR_BLACK, 50);
@@ -174,189 +182,188 @@ void keyboard()
     lcd_render_text("N", 650, 400, COLOR_BLACK, 50);
     lcd_render_text("M", 750, 400, COLOR_BLACK, 50);
     lcd_render_text("确", 900, 400, COLOR_BLACK, 50);
-
-    lcd_draw_filled_rounded_rectangle(200, 480, 630, 100, 15, COLOR_LIGHTGRAY);
-    lcd_render_text("除", 50, 500, COLOR_BLACK, 50);
     lcd_render_text("认", 900, 500, COLOR_BLACK, 50);
+    
+    lcd_draw_filled_rounded_rectangle(200, 480, 630, 100, 15, COLOR_LIGHTGRAY);
     lcd_render_text("空格", 450, 505, COLOR_WHITE, 50);
+
+    /* 此处不能清理资源，因为键盘需要一直渲染，否则会卡住 */
+    //lcd_cleanup();
 }
 
-/* 账号与密码提示文本渲染 */
+/* 登陆界面提示文本渲染 */
 void account_password_background_box() 
 {
     /* 初始化字库 */
     if (lcd_init("/dev/fb0", "simkai.ttf")!= 0) {
-        printf("初始化失败。\n");
+        printf("Font library initialization failed.\n");
         return;
     }
 
-    /* 绘制账号与密码背景文本框 */
-    /* 账号背景文本框 */
+    /* 渲染账号背景文本框 */
     lcd_draw_filled_rectangle(
-        104, 248,       /* 左上角坐标 (x, y) */
-        386, 50,        /* 矩形宽度和高度 */
-        COLOR_WHITE     /* 填充颜色 */
+        104, 248,               /* 左上角坐标 (x, y) */
+        386, 50,                /* 矩形宽度和高度 */
+        COLOR_WHITE             /* 填充颜色 */
     );
     lcd_render_text(
-        "请输入账号",                       /* 文本内容 */
-        104, 260,                           /* 起始坐标 (x, y) */
-        COLOR_LIGHTGRAY,                    /* 文本颜色 */
-        25                                  /* 字体大小 */
+        "请输入账号",            /* 文本内容 */
+        104, 260,               /* 起始坐标 (x, y) */
+        COLOR_LIGHTGRAY,        /* 文本颜色 */
+        25                      /* 字体大小 */
     );
-    /* 密码背景文本框 */
+    /* 渲染密码背景文本框 */
     lcd_draw_filled_rectangle(
-        104, 310,       /* 左上角坐标 (x, y) */
-        386, 50,        /* 矩形宽度和高度 */
-        COLOR_WHITE     /* 填充颜色 */
+        104, 310,               /* 左上角坐标 (x, y) */
+        386, 50,                /* 矩形宽度和高度 */
+        COLOR_WHITE             /* 填充颜色 */
     );
     lcd_render_text(
         "请输入密码",            /* 文本内容 */
-        104, 323,                           /* 起始坐标 (x, y) */
-        COLOR_LIGHTGRAY,                    /* 文本颜色 */
-        25                                  /* 字体大小 */
+        104, 323,               /* 起始坐标 (x, y) */
+        COLOR_LIGHTGRAY,        /* 文本颜色 */
+        25                      /* 字体大小 */
     );
 
     /* 清理资源 */
     lcd_cleanup(); 
 }
 
-/* 注册界面渲染 */
+/* 注册界面提示文本渲染 */
 void register_background_box()
 {
     /* 初始化字库 */
     if (lcd_init("/dev/fb0", "simkai.ttf")!= 0) {
-        printf("初始化失败。\n");
+        printf("Font library initialization failed.\n");
         return;
     }
 
-    /* 绘制账号与密码背景文本框 */
-    /* 账号背景文本框 */
+    /* 渲染账号背景文本框 */
     lcd_draw_filled_rectangle(
-        104, 248,       /* 左上角坐标 (x, y) */
-        386, 50,        /* 矩形宽度和高度 */
-        COLOR_WHITE     /* 填充颜色 */
+        104, 248,                 /* 左上角坐标 (x, y) */
+        386, 50,                  /* 矩形宽度和高度 */
+        COLOR_WHITE               /* 填充颜色 */
     );
     lcd_render_text(
-        "请输入要注册的账号",             /* 文本内容 */
-        104, 260,                           /* 起始坐标 (x, y) */
-        COLOR_LIGHTGRAY,                    /* 文本颜色 */
-        25                                  /* 字体大小 */
+        "请输入要注册的账号",       /* 文本内容 */
+        104, 260,                 /* 起始坐标 (x, y) */
+        COLOR_LIGHTGRAY,          /* 文本颜色 */
+        25                        /* 字体大小 */
     );
-    /* 密码背景文本框 */
+    /* 渲染密码背景文本框 */
     lcd_draw_filled_rectangle(
-        104, 310,       /* 左上角坐标 (x, y) */
-        386, 50,        /* 矩形宽度和高度 */
-        COLOR_WHITE     /* 填充颜色 */
+        104, 310,                 /* 左上角坐标 (x, y) */
+        386, 50,                  /* 矩形宽度和高度 */
+        COLOR_WHITE               /* 填充颜色 */
     );
     lcd_render_text(
-        "请输入不少于8位数的密码",            /* 文本内容 */
-        104, 323,                           /* 起始坐标 (x, y) */
-        COLOR_LIGHTGRAY,                    /* 文本颜色 */
-        25                                  /* 字体大小 */
+        "请输入不少于8位数的密码",  /* 文本内容 */
+        104, 323,                 /* 起始坐标 (x, y) */
+        COLOR_LIGHTGRAY,          /* 文本颜色 */
+        25                        /* 字体大小 */
     );
 
     /* 清理资源 */
     lcd_cleanup();    
 }
 
-/* 账号找回界面渲染 */
+/* 账号找回界面提示文本渲染 */
 void find_account_background_box()
 {
     /* 初始化字库 */
     if (lcd_init("/dev/fb0", "simkai.ttf")!= 0) {
-        printf("初始化失败。\n");
+        printf("Font library initialization failed.\n");
         return;
     }
  
-    /* 绘制账号与密码背景文本框 */
-    /* 账号背景文本框 */
+    /* 渲染账号背景文本框 */
     lcd_draw_filled_rectangle(
-        104, 248,       /* 左上角坐标 (x, y) */
-        386, 50,        /* 矩形宽度和高度 */
-        COLOR_WHITE     /* 填充颜色 */
+        104, 248,                     /* 左上角坐标 (x, y) */
+        386, 50,                      /* 矩形宽度和高度 */
+        COLOR_WHITE                   /* 填充颜色 */
     );
     lcd_render_text(
-        "请输入要找回的账号",             /* 文本内容 */
-        104, 260,                           /* 起始坐标 (x, y) */
-        COLOR_LIGHTGRAY,                    /* 文本颜色 */
-        25                                  /* 字体大小 */
+        "请输入要找回的账号",           /* 文本内容 */
+        104, 260,                     /* 起始坐标 (x, y) */
+        COLOR_LIGHTGRAY,              /* 文本颜色 */
+        25                            /* 字体大小 */
     );
-    /* 密码背景文本框 */
+    /* 渲染密码背景文本框 */
     lcd_draw_filled_rectangle(
-        104, 310,       /* 左上角坐标 (x, y) */
-        386, 50,        /* 矩形宽度和高度 */
-        COLOR_WHITE     /* 填充颜色 */
+        104, 310,                     /* 左上角坐标 (x, y) */
+        386, 50,                      /* 矩形宽度和高度 */
+        COLOR_WHITE                   /* 填充颜色 */
     );
     lcd_render_text(
-        "请输入要修改的密码(8-12位)",            /* 文本内容 */
-        104, 323,                           /* 起始坐标 (x, y) */
-        COLOR_LIGHTGRAY,                    /* 文本颜色 */
-        25                                  /* 字体大小 */
+        "请输入要修改的密码(8-12位)",   /* 文本内容 */
+        104, 323,                     /* 起始坐标 (x, y) */
+        COLOR_LIGHTGRAY,              /* 文本颜色 */
+        25                            /* 字体大小 */
     );
 
     /* 清理资源 */
     lcd_cleanup();
 }
 
-/* 登陆界面账号输入实现 */
+/* 登录界面账号输入功能实现 */
 void input_account_box() 
 {
     /* 初始化字库 */
     if (lcd_init("/dev/fb0", "simkai.ttf") != 0) {
-        printf("初始化失败。\n");
+        printf("Font library initialization failed.\n");
         return;
     }
 
+    /* 加载背景图层 */
+    show_bmp_to_lcd("login_initialization.bmp", 0, 0, 1024, 600); 
+    
     /* 置顶账号输入框，以解决闪烁问题 */
-    show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
-    /* 绘制账号输入文本框背景 */
+    /* 渲染账号背景文本框 */
     lcd_draw_filled_rectangle(
-        0, 0,               /* 左上角坐标 (x, y) */
-        1024, 143,          /* 矩形宽度和高度 */
-        COLOR_WHITE         /* 填充颜色 */ 
+        0, 0,                              /* 左上角坐标 (x, y) */
+        1024, 143,                         /* 矩形宽度和高度 */
+        COLOR_WHITE                        /* 填充颜色 */ 
     );
-    /* 绘制账号输入文本框 */
     lcd_render_text_with_box(
         user_info.account_number_buf,      /* 文本内容 */
-        70, 51,                /* 起始坐标 (x, y) */
-        COLOR_BLACK,             /* 文本颜色 */ 
-        COLOR_WHITE,             /* 文本框背景颜色 */ 
-        0,                       /* 文本与文本框边缘的间距 */ 
-        BOX_STYLE_RECTANGLE,     /* 矩形样式 */ 
-        0,                       /* 矩形样式不需要半径 */
-        60,                      /* 字体大小 */
-        0,                     /* 文本框宽度 */
-        0                       /* 文本框高度 */
+        70, 51,                            /* 起始坐标 (x, y) */
+        COLOR_BLACK,                       /* 文本颜色 */ 
+        COLOR_WHITE,                       /* 文本框背景颜色 */ 
+        0,                                 /* 文本与文本框边缘的间距 */ 
+        BOX_STYLE_RECTANGLE,               /* 矩形样式 */ 
+        0,                                 /* 矩形样式不需要半径 */
+        60,                                /* 字体大小 */
+        0,                                 /* 文本框宽度 */
+        0                                  /* 文本框高度 */
     );
-
-    /* 绘制确认按钮 */
+    /* 渲染确认按钮 */
     lcd_render_text_with_box(
-        "确认",      /* 文本内容 */
-        800, 51,                /* 起始坐标 (x, y) */
-        COLOR_WHITE,             /* 文本颜色 */ 
-        COLOR_LIGHTGRAY,             /* 文本框背景颜色 */ 
-        0,                       /* 文本与文本框边缘的间距 */ 
-        BOX_STYLE_ROUNDED,     /* 矩形样式 */ 
-        15,                       /* 矩形样式不需要半径 */
-        60,                      /* 字体大小 */
-        0,                       /* 文本框宽度 */
-        0                        /* 文本框高度 */
+        "确认",                            /* 文本内容 */
+        800, 51,                           /* 起始坐标 (x, y) */
+        COLOR_WHITE,                       /* 文本颜色 */ 
+        COLOR_LIGHTGRAY,                   /* 文本框背景颜色 */ 
+        0,                                 /* 文本与文本框边缘的间距 */ 
+        BOX_STYLE_ROUNDED,                 /* 圆角矩形样式 */ 
+        15,                                /* 圆角矩形半径 */
+        60,                                /* 字体大小 */
+        0,                                 /* 文本框宽度 */
+        0                                  /* 文本框高度 */
     );
     keyboard();    /* 加载键盘 */
 
-    // 打开触摸屏文件
+    /* 为特定的确认按钮单独开一个触摸函数 */
+    /* 打开触摸屏文件 */ 
     int input_fd = open("/dev/input/event1", O_RDWR);
     if (input_fd == -1) {
-        perror("Failed to open touchscreen device");
+        printf("Failed to open touchscreen device.\n");
         return;
     }
-
     struct input_event input_buf;
 
     while (1) {
-        int input_changed = 0;  // 标记输入是否有变化
+        int input_changed = 0;  /* 标记输入是否有变化 */ 
 
-        // 读取触摸屏数据
+        /* 读取触摸屏数据 */ 
         read(input_fd, &input_buf, sizeof(input_buf));
         if (input_buf.type == EV_ABS && input_buf.code == ABS_X) {
             input_x = input_buf.value;
@@ -365,59 +372,71 @@ void input_account_box()
             input_y = input_buf.value;
         }
         if (input_buf.type == EV_KEY && input_buf.code == BTN_TOUCH && input_buf.value == 0) {
-            // 判断是否点击了确认按钮
             if ((input_x >= 800 && input_x <= 900 && input_y >= 51 && input_y <= 111) || 
-                (input_x >= 876 && input_x <= 1024 && input_y >= 400 && input_y <= 600)) {  /* 确认按钮和确认键 */
-                /* 处理确认按钮点击事件 */ 
+                (input_x >= 876 && input_x <= 1024 && input_y >= 400 && input_y <= 600)) {
+                /* 点击了确认按钮和确认键 */
+
+                /* 账号文本处理 */
                 if (strlen(user_info.account_number_buf) == 0) {
-                    show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
-                    /* 账号背景文本框 */
+                    /* 账号输入为空 */
+                    
+                    /* 加载背景图层 */
+                    show_bmp_to_lcd("login_initialization.bmp", 0, 0, 1024, 600);    
+                    /* 渲染账号背景文本框 */
                     lcd_draw_filled_rectangle(
-                        104, 248,       /* 左上角坐标 (x, y) */
-                        386, 50,        /* 矩形宽度和高度 */
-                        COLOR_WHITE     /* 填充颜色 */
+                        104, 248,               /* 左上角坐标 (x, y) */
+                        386, 50,                /* 矩形宽度和高度 */
+                        COLOR_WHITE             /* 填充颜色 */
                     );
                     lcd_render_text(
-                        "请输入账号",                       /* 文本内容 */
-                        104, 260,                           /* 起始坐标 (x, y) */
-                        COLOR_LIGHTGRAY,                    /* 文本颜色 */
-                        25                                  /* 字体大小 */
+                        "请输入账号",            /* 文本内容 */
+                        104, 260,               /* 起始坐标 (x, y) */
+                        COLOR_LIGHTGRAY,        /* 文本颜色 */
+                        25                      /* 字体大小 */
                     );            
-                } else if (strlen(user_info.account_number_buf) <= 12) {
+                } else if (strlen(user_info.account_number_buf) <= 12) {    
                     /* 账号不超过12位 */
-                    show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
-                    /* 账号输入文本框 */ 
+                    
+                    /* 加载背景图层 */
+                    show_bmp_to_lcd("login_initialization.bmp", 0, 0, 1024, 600);    
+                    /* 渲染账号背景文本框 */ 
                     lcd_render_text_with_box(
                         user_info.account_number_buf,      /* 文本内容 */
-                        104, 248,                /* 起始坐标 (x, y) */
-                        COLOR_BLACK,             /* 文本颜色 */ 
-                        COLOR_WHITE,             /* 文本框背景颜色 */ 
-                        0,                       /* 文本与文本框边缘的间距 */ 
-                        BOX_STYLE_RECTANGLE,     /* 矩形样式 */ 
-                        0,                       /* 矩形样式不需要半径 */
-                        50,                      /* 字体大小 */
-                        386,                     /* 文本框宽度 */
-                        50                       /* 文本框高度 */
+                        104, 248,                          /* 起始坐标 (x, y) */
+                        COLOR_BLACK,                       /* 文本颜色 */ 
+                        COLOR_WHITE,                       /* 文本框背景颜色 */ 
+                        0,                                 /* 文本与文本框边缘的间距 */ 
+                        BOX_STYLE_RECTANGLE,               /* 矩形样式 */ 
+                        0,                                 /* 矩形样式不需要半径 */
+                        50,                                /* 字体大小 */
+                        386,                               /* 文本框宽度 */
+                        50                                 /* 文本框高度 */
                     );  
                 } else {
                     lcd_render_text_with_box(
-                        "账号超过12位，请重新输入！",     /* 文本内容 */
-                        310, 400,                       /* 起始坐标 (x, y) */
-                        COLOR_WHITE,                    /* 文本颜色 */
-                        COLOR_LIGHTGRAY,                /* 文本框背景颜色 */
-                        10,                             /* 文本与文本框边缘的间距 */
-                        BOX_STYLE_ROUNDED,              /* 圆角样式 */
-                        15,                             /* 圆角半径 */
-                        30,                             /* 字体大小 */
-                        0,                              /* 文本框宽度 */
-                        0                               /* 文本框高度 */
+                        "账号超过12位，请重新输入！",        /* 文本内容 */
+                        310, 400,                          /* 起始坐标 (x, y) */
+                        COLOR_WHITE,                       /* 文本颜色 */
+                        COLOR_LIGHTGRAY,                   /* 文本框背景颜色 */
+                        10,                                /* 文本与文本框边缘的间距 */
+                        BOX_STYLE_ROUNDED,                 /* 圆角矩形样式 */
+                        15,                                /* 圆角矩形半径 */
+                        30,                                /* 字体大小 */
+                        0,                                 /* 文本框宽度 */
+                        0                                  /* 文本框高度 */
                     );
                     sleep(3);
+
+                    /* 重置允许登录标记位 */
                     login_allow_flags = 0;
+
+                    /* 清空已输入的账号与密码 */
                     memset(user_info.account_number_buf, 0, sizeof(user_info.account_number_buf));
                     memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
                     memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
-                    input_account_box(); /* 重新输入账号 */
+
+                    /* 重新输入账号 */
+                    input_account_box(); 
                     return;
                 }
 
@@ -429,14 +448,15 @@ void input_account_box()
                 * 优化整体结构。
                 */
 
-
-                /* 显示或隐藏密码开关 */
+                /* 密码文本处理 */
+                /* 显示或隐藏密码开关 0：隐藏 1：显示 */
                 int show_hide_password_flags = 0;
-                /* 密码背景文本框 */
+
+                /* 渲染密码背景文本框 */
                 lcd_draw_filled_rectangle(
-                    104, 310,       /* 左上角坐标 (x, y) */
-                    386, 50,        /* 矩形宽度和高度 */
-                    COLOR_WHITE     /* 填充颜色 */
+                    104, 310,                   /* 左上角坐标 (x, y) */
+                    386, 50,                    /* 矩形宽度和高度 */
+                    COLOR_WHITE                 /* 填充颜色 */
                 );
 
                 /* 空密码时 */
@@ -447,17 +467,19 @@ void input_account_box()
                         COLOR_LIGHTGRAY,        /* 文本颜色 */
                         25                      /* 字体大小 */
                     );
+                    /* 默认隐藏密码 */
                     show_bmp_to_lcd("hide_password.bmp", 448, 315, 40, 40);
                     while (3) {
                         ts_fun();
                         if (input_x >= 450 && input_x <= 495 && input_y >= 322 && input_y <= 360) {
-                            /* 切换标志变量 */ 
+                            /* 切换显示隐藏密码开关 */ 
                             show_hide_password_flags = !show_hide_password_flags;
                             if (show_hide_password_flags) {
+                                /* 显示密码 */
                                 lcd_draw_filled_rectangle(
-                                    104, 310,       /* 左上角坐标 (x, y) */
-                                    386, 50,        /* 矩形宽度和高度 */
-                                    COLOR_WHITE     /* 填充颜色 */
+                                    104, 310,               /* 左上角坐标 (x, y) */
+                                    386, 50,                /* 矩形宽度和高度 */
+                                    COLOR_WHITE             /* 填充颜色 */
                                 );
                                 lcd_render_text(
                                     "请输入密码",            /* 文本内容 */
@@ -467,10 +489,11 @@ void input_account_box()
                                 );
                                 show_bmp_to_lcd("show_password.bmp", 448, 315, 40, 40);
                             } else {
+                                /* 隐藏密码 */
                                 lcd_draw_filled_rectangle(
-                                    104, 310,       /* 左上角坐标 (x, y) */
-                                    386, 50,        /* 矩形宽度和高度 */
-                                    COLOR_WHITE     /* 填充颜色 */
+                                    104, 310,               /* 左上角坐标 (x, y) */
+                                    386, 50,                /* 矩形宽度和高度 */
+                                    COLOR_WHITE             /* 填充颜色 */
                                 );
                                 lcd_render_text(
                                     "请输入密码",            /* 文本内容 */
@@ -481,16 +504,21 @@ void input_account_box()
                                 show_bmp_to_lcd("hide_password.bmp", 448, 315, 40, 40);
                             }
                         } else if (input_x >= 104 && input_x <= 290 && input_y >= 248 && input_y <= 300) {
+                            /* 点击到账号文本框 */
                             input_account_box();
                             break;
                         } else if (input_x >= 104 && input_x <= 290 && input_y >= 310 && input_y <= 360) {
+                            /* 点击到密码文本框 */
                             input_password_box();
                             break;
                         } else if (input_x >= 104 && input_x <= 248 && input_y >= 400 && input_y <= 500) {
+                            /* 点击到登录按钮 */
                             login_judgment();
                             return;
                         } else if (input_x >= 250 && input_x <= 361 && input_y >= 424 && input_y <= 484) {
-                            /* 可在登陆界面期间随时切换注册界面 */
+                            /* 点击到注册按钮 */
+
+                            /* 清空已输入的账号与密码 */
                             memset(user_info.account_number_buf, 0, sizeof(user_info.account_number_buf));
                             memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
                             memset(user_info.hide_password_number_buf, 0, sizeof(user_info.hide_password_number_buf));
@@ -500,73 +528,74 @@ void input_account_box()
                     }
                     break;
                 }
-
                 /* 非空密码时 */
                 if (strlen(user_info.password_number_buf) != 0) {
                     lcd_draw_filled_rectangle(
-                        104, 310,       /* 左上角坐标 (x, y) */
-                        386, 50,        /* 矩形宽度和高度 */
-                        COLOR_WHITE     /* 填充颜色 */
+                        104, 310,                           /* 左上角坐标 (x, y) */
+                        386, 50,                            /* 矩形宽度和高度 */
+                        COLOR_WHITE                         /* 填充颜色 */
                     );
                     /* 密码输入文本框 */
                     lcd_render_text_with_box(
-                        user_info.hide_password_number_buf,      /* 文本内容 */
-                        104, 310,                /* 起始坐标 (x, y) */
-                        COLOR_BLACK,             /* 文本颜色 */  
-                        COLOR_WHITE,             /* 文本框背景颜色 */
-                        0,                       /* 文本与文本框边缘的间距 */
-                        BOX_STYLE_RECTANGLE,     /* 矩形样式 */
-                        0,                       /* 矩形样式不需要半径 */
-                        50,                      /* 字体大小 */
-                        386,                       /* 文本框宽度 */
-                        50                        /* 文本框高度 */
+                        user_info.hide_password_number_buf, /* 文本内容 */
+                        104, 310,                           /* 起始坐标 (x, y) */
+                        COLOR_BLACK,                        /* 文本颜色 */  
+                        COLOR_WHITE,                        /* 文本框背景颜色 */
+                        0,                                  /* 文本与文本框边缘的间距 */
+                        BOX_STYLE_RECTANGLE,                /* 矩形样式 */
+                        0,                                  /* 矩形样式不需要半径 */
+                        50,                                 /* 字体大小 */
+                        386,                                /* 文本框宽度 */
+                        50                                  /* 文本框高度 */
                     );
+                    
+                    /* 默认隐藏密码 */
                     show_bmp_to_lcd("hide_password.bmp", 448, 315, 40, 40);
                     while (4) {
                         ts_fun();
                         if (input_x >= 450 && input_x <= 495 && input_y >= 322 && input_y <= 360) {
-                            /* 切换标志变量 */ 
+                            /* 切换显示隐藏密码开关 */ 
                             show_hide_password_flags = !show_hide_password_flags;
                             if (show_hide_password_flags) {
                                 /* 显示密码 */
                                 lcd_draw_filled_rectangle(
-                                    104, 310,       /* 左上角坐标 (x, y) */
-                                    386, 50,        /* 矩形宽度和高度 */
-                                    COLOR_WHITE     /* 填充颜色 */
+                                    104, 310,                           /* 左上角坐标 (x, y) */
+                                    386, 50,                            /* 矩形宽度和高度 */
+                                    COLOR_WHITE                         /* 填充颜色 */
                                 );
                                 /* 密码输入文本框 */
                                 lcd_render_text_with_box(
                                     user_info.password_number_buf,      /* 文本内容 */
-                                    104, 310,                /* 起始坐标 (x, y) */
-                                    COLOR_BLACK,             /* 文本颜色 */  
-                                    COLOR_WHITE,             /* 文本框背景颜色 */
-                                    0,                       /* 文本与文本框边缘的间距 */
-                                    BOX_STYLE_RECTANGLE,     /* 矩形样式 */
-                                    0,                       /* 矩形样式不需要半径 */
-                                    50,                      /* 字体大小 */
-                                    386,                       /* 文本框宽度 */
-                                    50                        /* 文本框高度 */
+                                    104, 310,                           /* 起始坐标 (x, y) */
+                                    COLOR_BLACK,                        /* 文本颜色 */  
+                                    COLOR_WHITE,                        /* 文本框背景颜色 */
+                                    0,                                  /* 文本与文本框边缘的间距 */
+                                    BOX_STYLE_RECTANGLE,                /* 矩形样式 */
+                                    0,                                  /* 矩形样式不需要半径 */
+                                    50,                                 /* 字体大小 */
+                                    386,                                /* 文本框宽度 */
+                                    50                                  /* 文本框高度 */
                                 );
                                 show_bmp_to_lcd("show_password.bmp", 448, 315, 40, 40);
                             } else {
                                 /* 隐藏密码 */
                                 lcd_draw_filled_rectangle(
-                                    104, 310,       /* 左上角坐标 (x, y) */
-                                    386, 50,        /* 矩形宽度和高度 */
-                                    COLOR_WHITE     /* 填充颜色 */
+                                    104, 310,                           /* 左上角坐标 (x, y) */
+                                    386, 50,                            /* 矩形宽度和高度 */
+                                    COLOR_WHITE                         /* 填充颜色 */
                                 );
                                 /* 密码输入文本框 */
                                 lcd_render_text_with_box(
-                                    user_info.hide_password_number_buf,      /* 文本内容 */
-                                    104, 310,                /* 起始坐标 (x, y) */
-                                    COLOR_BLACK,             /* 文本颜色 */  
-                                    COLOR_WHITE,             /* 文本框背景颜色 */
-                                    0,                       /* 文本与文本框边缘的间距 */
-                                    BOX_STYLE_RECTANGLE,     /* 矩形样式 */
-                                    0,                       /* 矩形样式不需要半径 */
-                                    50,                      /* 字体大小 */
-                                    386,                       /* 文本框宽度 */
-                                    50                        /* 文本框高度 */
+                                    user_info.hide_password_number_buf, /* 文本内容 */
+                                    104, 310,                           /* 起始坐标 (x, y) */
+                                    COLOR_BLACK,                        /* 文本颜色 */  
+                                    COLOR_WHITE,                        /* 文本框背景颜色 */
+                                    0,                                  /* 文本与文本框边缘的间距 */
+                                    BOX_STYLE_RECTANGLE,                /* 矩形样式 */
+                                    0,                                  /* 矩形样式不需要半径 */
+                                    50,                                 /* 字体大小 */
+                                    386,                                /* 文本框宽度 */
+                                    50                                  /* 文本框高度 */
                                 );
                                 show_bmp_to_lcd("hide_password.bmp", 448, 315, 40, 40);
                             }
@@ -577,7 +606,8 @@ void input_account_box()
                             input_password_box();
                             break;
                         } else if (input_x >= 104 && input_x <= 248 && input_y >= 400 && input_y <= 500) {
-                            login_allow_flags = 1;    /* 满足所有输入条件，允许登录 */
+                            /* 满足所有输入条件，允许登录 */
+                            login_allow_flags = 1;    
                             login_judgment();
                             return;
                         } else if (input_x >= 250 && input_x <= 361 && input_y >= 424 && input_y <= 484) {
@@ -591,64 +621,80 @@ void input_account_box()
                 }
                 break;  
             }
-            // 处理键盘点击事件
-            if (input_x >= 224 && input_x <= 810 && input_y >= 503 && input_y <= 600) { //空格键
+
+            /* 处理键盘点击事件 */ 
+            if (input_x >= 224 && input_x <= 810 && input_y >= 503 && input_y <= 600) {
+                /* 空格键 */ 
                 strcat(user_info.account_number_buf, " ");
                 input_changed = 1;  
             }
-            if (input_x >= 0 && input_x <= 100 && input_y >= 198 && input_y <= 254) { //Q键
+            if (input_x >= 0 && input_x <= 100 && input_y >= 198 && input_y <= 254) { 
+                /* Q键 */
                 strcat(user_info.account_number_buf, "Q");
                 input_changed = 1;  
             }
-            if (input_x >= 144 && input_x <= 210 && input_y >= 198 && input_y <= 254) { //W键
+            if (input_x >= 144 && input_x <= 210 && input_y >= 198 && input_y <= 254) { 
+                /* W键 */
                 strcat(user_info.account_number_buf, "W");
                 input_changed = 1;  
             }
-            if (input_x >= 247 && input_x <= 301 && input_y >= 198 && input_y <= 254) { //E键
+            if (input_x >= 247 && input_x <= 301 && input_y >= 198 && input_y <= 254) { 
+                /* E键 */
                 strcat(user_info.account_number_buf, "E");
                 input_changed = 1;  
             }
-            if (input_x >= 331 && input_x <= 400 && input_y >= 198 && input_y <= 254) { //R键
+            if (input_x >= 331 && input_x <= 400 && input_y >= 198 && input_y <= 254) { 
+                /* R键 */
                 strcat(user_info.account_number_buf, "R");
                 input_changed = 1;  
             }
-            if (input_x >= 436 && input_x <= 495 && input_y >= 198 && input_y <= 254) { //T键
+            if (input_x >= 436 && input_x <= 495 && input_y >= 198 && input_y <= 254) { 
+                /* T键 */
                 strcat(user_info.account_number_buf, "T");
                 input_changed = 1;  
             }
-            if (input_x >= 544 && input_x <= 600 && input_y >= 198 && input_y <= 254) { //Y键
+            if (input_x >= 544 && input_x <= 600 && input_y >= 198 && input_y <= 254) { 
+                /* Y键 */
                 strcat(user_info.account_number_buf, "Y");
                 input_changed = 1;  
             }
-            if (input_x >= 640 && input_x <= 694 && input_y >= 198 && input_y <= 254) { //U键
+            if (input_x >= 640 && input_x <= 694 && input_y >= 198 && input_y <= 254) { 
+                /* U键 */
                 strcat(user_info.account_number_buf, "U");
                 input_changed = 1;  
             }
-            if (input_x >= 740 && input_x <= 797 && input_y >= 198 && input_y <= 254) { //I键
+            if (input_x >= 740 && input_x <= 797 && input_y >= 198 && input_y <= 254) { 
+                /* I键 */
                 strcat(user_info.account_number_buf, "I");
                 input_changed = 1;  
             }
-            if (input_x >= 834 && input_x <= 900 && input_y >= 198 && input_y <= 254) { //O键
+            if (input_x >= 834 && input_x <= 900 && input_y >= 198 && input_y <= 254) { 
+                /* O键 */
                 strcat(user_info.account_number_buf, "O");
                 input_changed = 1;  
             }
-            if (input_x >= 927 && input_x <= 1024 && input_y >= 198 && input_y <= 254) { //P键
+            if (input_x >= 927 && input_x <= 1024 && input_y >= 198 && input_y <= 254) { 
+                /* P键 */
                 strcat(user_info.account_number_buf, "P");
                 input_changed = 1;  
             }
-            if (input_x >= 104 && input_x <= 150 && input_y >= 297 && input_y <= 353) { //A键
+            if (input_x >= 104 && input_x <= 150 && input_y >= 297 && input_y <= 353) { 
+                /* A键 */
                 strcat(user_info.account_number_buf, "A");
                 input_changed = 1;  
             }
-            if (input_x >= 194 && input_x <= 264 && input_y >= 297 && input_y <= 353) { //S键
+            if (input_x >= 194 && input_x <= 264 && input_y >= 297 && input_y <= 353) { 
+                /* S键 */
                 strcat(user_info.account_number_buf, "S");
                 input_changed = 1;  
             }
-            if (input_x >= 291 && input_x <= 350 && input_y >= 297 && input_y <= 353) { //D键
+            if (input_x >= 291 && input_x <= 350 && input_y >= 297 && input_y <= 353) { 
+                /* D键 */
                 strcat(user_info.account_number_buf, "D");
                 input_changed = 1;  
             }
-            if (input_x >= 385 && input_x <= 447 && input_y >= 297 && input_y <= 353) { //F键
+            if (input_x >= 385 && input_x <= 447 && input_y >= 297 && input_y <= 353) { 
+                /* F键 */
                 strcat(user_info.account_number_buf, "F");
                 input_changed = 1;  
             }
@@ -656,94 +702,107 @@ void input_account_box()
                 strcat(user_info.account_number_buf, "G");
                 input_changed = 1;  
             }
-            if (input_x >= 589 && input_x <= 647 && input_y >= 297 && input_y <= 353) { //H键
+            if (input_x >= 589 && input_x <= 647 && input_y >= 297 && input_y <= 353) { 
+                /* H键 */
                 strcat(user_info.account_number_buf, "H");
                 input_changed = 1;  
             }
-            if (input_x >= 697 && input_x <= 742 && input_y >= 297 && input_y <= 353) { //J键
+            if (input_x >= 697 && input_x <= 742 && input_y >= 297 && input_y <= 353) { 
+                /* J键 */
                 strcat(user_info.account_number_buf, "J");
                 input_changed = 1;  
             }
-            if (input_x >= 789 && input_x <= 847 && input_y >= 297 && input_y <= 353) { //K键
+            if (input_x >= 789 && input_x <= 847 && input_y >= 297 && input_y <= 353) { 
+                /* K键 */
                 strcat(user_info.account_number_buf, "K");
                 input_changed = 1;  
             }
-            if (input_x >= 894 && input_x <= 938 && input_y >= 297 && input_y <= 353) { //L键
+            if (input_x >= 894 && input_x <= 938 && input_y >= 297 && input_y <= 353) { 
+                /* L键 */
                 strcat(user_info.account_number_buf, "L");
                 input_changed = 1;  
             }
-            if (input_x >= 155 && input_x <= 205 && input_y >= 400 && input_y <= 458) { //Z键
+            if (input_x >= 155 && input_x <= 205 && input_y >= 400 && input_y <= 458) { 
+                /* Z键 */
                 strcat(user_info.account_number_buf, "Z");
                 input_changed = 1;  
             }
-            if (input_x >= 249 && input_x <= 297 && input_y >= 400 && input_y <= 458) { //X键
+            if (input_x >= 249 && input_x <= 297 && input_y >= 400 && input_y <= 458) { 
+                /* X键 */
                 strcat(user_info.account_number_buf, "X");
                 input_changed = 1;  
             }
-            if (input_x >= 342 && input_x <= 400 && input_y >= 400 && input_y <= 458) { //C键
+            if (input_x >= 342 && input_x <= 400 && input_y >= 400 && input_y <= 458) { 
+                /* C键 */
                 strcat(user_info.account_number_buf, "C");
                 input_changed = 1;  
             }
-            if (input_x >= 445 && input_x <= 495 && input_y >= 400 && input_y <= 458) { //V键
+            if (input_x >= 445 && input_x <= 495 && input_y >= 400 && input_y <= 458) { 
+                /* V键 */
                 strcat(user_info.account_number_buf, "V");
                 input_changed = 1;  
             }
-            if (input_x >= 541 && input_x <= 589 && input_y >= 400 && input_y <= 458) { //B键
+            if (input_x >= 541 && input_x <= 589 && input_y >= 400 && input_y <= 458) { 
+                /* B键 */
                 strcat(user_info.account_number_buf, "B");
                 input_changed = 1;  
             }
-            if (input_x >= 641 && input_x <= 692 && input_y >= 400 && input_y <= 458) { //N键
+            if (input_x >= 641 && input_x <= 692 && input_y >= 400 && input_y <= 458) { 
+                /* N键 */
                 strcat(user_info.account_number_buf, "N");
                 input_changed = 1;  
             }
-            if (input_x >= 739 && input_x <= 800 && input_y >= 400 && input_y <= 458) { //M键
+            if (input_x >= 739 && input_x <= 800 && input_y >= 400 && input_y <= 458) { 
+                /* M键 */
                 strcat(user_info.account_number_buf, "M");
                 input_changed = 1;  
             }
-            if (input_x >= 0 && input_x <= 120 && input_y >= 393 && input_y <= 600) { //删除键
+            if (input_x >= 0 && input_x <= 120 && input_y >= 393 && input_y <= 600) { 
+                /* 删除键 */
                 if (strlen(user_info.account_number_buf) > 0) {
                     user_info.account_number_buf[strlen(user_info.account_number_buf) - 1] = '\0';
                 }
                 input_changed = 1;  
             }
 
+            /* 标记输入有变化 */
             if (input_changed) {
-                // 绘制账号输入文本框背景
+                /* 更新账号输入文本框 */
                 lcd_draw_filled_rectangle(
-                    0, 0,               /* 左上角坐标 (x, y) */
-                    1024, 143,          /* 矩形宽度和高度 */
-                    COLOR_WHITE         /* 填充颜色 */ 
+                    0, 0,                           /* 左上角坐标 (x, y) */
+                    1024, 143,                      /* 矩形宽度和高度 */
+                    COLOR_WHITE                     /* 填充颜色 */ 
                 );
-                /* 账号输入文本框 */ 
                 lcd_render_text_with_box(
-                    user_info.account_number_buf,      /* 文本内容 */
-                    70, 51,                /* 起始坐标 (x, y) */
-                    COLOR_BLACK,             /* 文本颜色 */ 
-                    COLOR_WHITE,             /* 文本框背景颜色 */ 
-                    0,                       /* 文本与文本框边缘的间距 */ 
-                    BOX_STYLE_RECTANGLE,     /* 矩形样式 */ 
-                    0,                       /* 矩形样式不需要半径 */
-                    60,                      /* 字体大小 */
-                    0,                     /* 文本框宽度 */
-                    0                       /* 文本框高度 */
+                    user_info.account_number_buf,   /* 文本内容 */
+                    70, 51,                         /* 起始坐标 (x, y) */
+                    COLOR_BLACK,                    /* 文本颜色 */ 
+                    COLOR_WHITE,                    /* 文本框背景颜色 */ 
+                    0,                              /* 文本与文本框边缘的间距 */ 
+                    BOX_STYLE_RECTANGLE,            /* 矩形样式 */ 
+                    0,                              /* 矩形样式不需要半径 */
+                    60,                             /* 字体大小 */
+                    0,                              /* 文本框宽度 */
+                    0                               /* 文本框高度 */
                 );        
                 /* 确认按钮 */
                 lcd_render_text_with_box(
-                    "确认",      /* 文本内容 */
-                    800, 51,                /* 起始坐标 (x, y) */
-                    COLOR_WHITE,             /* 文本颜色 */ 
-                    COLOR_LIGHTGRAY,             /* 文本框背景颜色 */ 
-                    0,                       /* 文本与文本框边缘的间距 */ 
-                    BOX_STYLE_ROUNDED,     /* 矩形样式 */ 
-                    15,                       /* 矩形样式不需要半径 */
-                    60,                      /* 字体大小 */
-                    0,                       /* 文本框宽度 */
-                    0                        /* 文本框高度 */
+                    "确认",                         /* 文本内容 */
+                    800, 51,                        /* 起始坐标 (x, y) */
+                    COLOR_WHITE,                    /* 文本颜色 */ 
+                    COLOR_LIGHTGRAY,                /* 文本框背景颜色 */ 
+                    0,                              /* 文本与文本框边缘的间距 */ 
+                    BOX_STYLE_ROUNDED,              /* 圆角矩形样式 */ 
+                    15,                             /* 圆角矩形半径 */
+                    60,                             /* 字体大小 */
+                    0,                              /* 文本框宽度 */
+                    0                               /* 文本框高度 */
                 );
             }
         }
     }
 
+    /* 关闭文件，释放资源 */
     close(input_fd);
     lcd_cleanup();
 }
@@ -753,60 +812,59 @@ void input_password_box()
 {
     /* 初始化字库 */
     if (lcd_init("/dev/fb0", "simkai.ttf") != 0) {
-        printf("初始化失败。\n");
+        printf("Font library initialization failed.\n");
         return;
     }
 
-    /* 置顶密码输入框，以解决闪烁问题 */
-    show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
-    /* 绘制密码输入文本框背景 */
+    /* 加载背景图层 */
+    show_bmp_to_lcd("login_initialization.bmp", 0, 0, 1024, 600);  
+    /* 渲染密码背景文本框 */  
     lcd_draw_filled_rectangle(
-        0, 0,               /* 左上角坐标 (x, y) */
-        1024, 143,          /* 矩形宽度和高度 */
-        COLOR_WHITE         /* 填充颜色 */ 
+        0, 0,                           /* 左上角坐标 (x, y) */
+        1024, 143,                      /* 矩形宽度和高度 */
+        COLOR_WHITE                     /* 填充颜色 */ 
     );
-    /* 绘制密码输入文本框 */
     lcd_render_text_with_box(
-        user_info.password_number_buf,      /* 文本内容 */
-        70, 51,                /* 起始坐标 (x, y) */
-        COLOR_BLACK,             /* 文本颜色 */ 
-        COLOR_WHITE,             /* 文本框背景颜色 */ 
-        0,                       /* 文本与文本框边缘的间距 */ 
-        BOX_STYLE_RECTANGLE,     /* 矩形样式 */ 
-        0,                       /* 矩形样式不需要半径 */
-        60,                      /* 字体大小 */
-        0,                     /* 文本框宽度 */
-        0                       /* 文本框高度 */
+        user_info.password_number_buf,  /* 文本内容 */
+        70, 51,                         /* 起始坐标 (x, y) */
+        COLOR_BLACK,                    /* 文本颜色 */ 
+        COLOR_WHITE,                    /* 文本框背景颜色 */ 
+        0,                              /* 文本与文本框边缘的间距 */ 
+        BOX_STYLE_RECTANGLE,            /* 矩形样式 */ 
+        0,                              /* 矩形样式不需要半径 */
+        60,                             /* 字体大小 */
+        0,                              /* 文本框宽度 */
+        0                               /* 文本框高度 */
     );
-
     /* 绘制确认按钮 */
     lcd_render_text_with_box(
-        "确认",      /* 文本内容 */
-        800, 51,                /* 起始坐标 (x, y) */
-        COLOR_WHITE,             /* 文本颜色 */ 
-        COLOR_LIGHTGRAY,             /* 文本框背景颜色 */ 
-        0,                       /* 文本与文本框边缘的间距 */ 
-        BOX_STYLE_ROUNDED,     /* 矩形样式 */ 
-        15,                       /* 矩形样式不需要半径 */
-        60,                      /* 字体大小 */
-        0,                       /* 文本框宽度 */
-        0                        /* 文本框高度 */
+        "确认",                         /* 文本内容 */
+        800, 51,                        /* 起始坐标 (x, y) */
+        COLOR_WHITE,                    /* 文本颜色 */ 
+        COLOR_LIGHTGRAY,                /* 文本框背景颜色 */ 
+        0,                              /* 文本与文本框边缘的间距 */ 
+        BOX_STYLE_ROUNDED,              /* 圆角矩形样式 */ 
+        15,                             /* 圆角矩形半径 */
+        60,                             /* 字体大小 */
+        0,                              /* 文本框宽度 */
+        0                               /* 文本框高度 */
     );
-    keyboard();    /* 加载键盘 */
+    /* 加载键盘 */
+    keyboard();    
 
-    // 打开触摸屏文件
+    /* 打开触摸屏文件 */
     int input_fd = open("/dev/input/event1", O_RDWR);
     if (input_fd == -1) {
         perror("Failed to open touchscreen device");
         return;
     }
-
     struct input_event input_buf;
 
     while (1) {
-        int input_changed = 0;  // 标记输入是否有变化
+        /* 标记输入是否有变化 */ 
+        int input_changed = 0;  
 
-        // 读取触摸屏数据
+        /* 读取触摸屏数据 */ 
         read(input_fd, &input_buf, sizeof(input_buf));
         if (input_buf.type == EV_ABS && input_buf.code == ABS_X) {
             input_x = input_buf.value;
@@ -815,39 +873,41 @@ void input_password_box()
             input_y = input_buf.value;
         }
         if (input_buf.type == EV_KEY && input_buf.code == BTN_TOUCH && input_buf.value == 0) {
-            // 判断是否点击了确认按钮
             if ((input_x >= 800 && input_x <= 900 && input_y >= 51 && input_y <= 111) || 
-                (input_x >= 876 && input_x <= 1024 && input_y >= 400 && input_y <= 600)) {  /* 确认按钮和确认键 */
-                /* 处理确认按钮点击事件 */
+                (input_x >= 876 && input_x <= 1024 && input_y >= 400 && input_y <= 600)) { 
+                /* 点击到确认按钮和确认键 */
+
+                /* 处理账号输入 */
                 if (strlen(user_info.account_number_buf) == 0) {
+                    /* 账号为空时 */
                     if (strlen(user_info.password_number_buf) >= 8 && strlen(user_info.password_number_buf) <= 12) {
                         /* 仅当密码符合条件时才显示图层 */
-                        show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
-                        /* 账号背景文本框 */
+                        show_bmp_to_lcd("login_initialization.bmp", 0, 0, 1024, 600);
+                        /* 渲染账号背景文本框 */
                         lcd_draw_filled_rectangle(
-                            104, 248,       /* 左上角坐标 (x, y) */
-                            386, 50,        /* 矩形宽度和高度 */
-                            COLOR_WHITE     /* 填充颜色 */
+                            104, 248,               /* 左上角坐标 (x, y) */
+                            386, 50,                /* 矩形宽度和高度 */
+                            COLOR_WHITE             /* 填充颜色 */
                         );
                         lcd_render_text(
-                            "请输入账号",                       /* 文本内容 */
-                            104, 260,                           /* 起始坐标 (x, y) */
-                            COLOR_LIGHTGRAY,                    /* 文本颜色 */
-                            25                                  /* 字体大小 */
+                            "请输入账号",            /* 文本内容 */
+                            104, 260,               /* 起始坐标 (x, y) */
+                            COLOR_LIGHTGRAY,        /* 文本颜色 */
+                            25                      /* 字体大小 */
                         );
                     } else {
                         /* 密码不符合条件，屏幕开始提示，不显示图层 */
-                        /* 账号背景文本框 */
+                        /* 渲染账号背景文本框，防止遮挡 */
                         lcd_draw_filled_rectangle(
-                            0, 0,       /* 左上角坐标 (x, y) */
-                            1, 1,        /* 矩形宽度和高度 */
-                            COLOR_WHITE     /* 填充颜色 */
+                            0, 0,                   /* 左上角坐标 (x, y) */
+                            1, 1,                   /* 矩形宽度和高度 */
+                            COLOR_WHITE             /* 填充颜色 */
                         );
                     }           
                 } else {
                     if (strlen(user_info.password_number_buf) >= 8 && strlen(user_info.password_number_buf) <= 12) {
                         /* 仅当密码符合条件时才显示图层 */
-                        show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
+                        show_bmp_to_lcd("login_initialization.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
                         /* 账号背景文本框 */
                         lcd_draw_filled_rectangle(
                             104, 248,       /* 左上角坐标 (x, y) */
@@ -869,27 +929,29 @@ void input_password_box()
                         );
                     } else {
                         /* 密码不符合条件，屏幕提示，不显示图层 */
-                        //show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);
-                        /* 账号背景文本框 */
+                        //show_bmp_to_lcd("login_initialization.bmp", 0, 0, 1024, 600);
+                        /* 渲染账号背景文本框 */
                         lcd_draw_filled_rectangle(
-                            0, 0,       /* 左上角坐标 (x, y) */
-                            1, 1,        /* 矩形宽度和高度 */
-                            COLOR_WHITE     /* 填充颜色 */
+                            0, 0,                   /* 左上角坐标 (x, y) */
+                            1, 1,                   /* 矩形宽度和高度 */
+                            COLOR_WHITE             /* 填充颜色 */
                         );
                     }
                 }
 
+                /* 处理密码输入 */
                 /* 显示或隐藏密码开关 */
                 int show_hide_password_flags = 0;
 
                 /* 空密码时 */
                 if (strlen(user_info.password_number_buf) == 0) {
-                    show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
-                    /* 密码背景文本框 */
+                    /* 加载背景图层 */
+                    show_bmp_to_lcd("login_initialization.bmp", 0, 0, 1024, 600);    
+                    /* 渲染密码背景文本框 */
                     lcd_draw_filled_rectangle(
-                        104, 310,       /* 左上角坐标 (x, y) */
-                        386, 50,        /* 矩形宽度和高度 */
-                        COLOR_WHITE     /* 填充颜色 */
+                        104, 310,               /* 左上角坐标 (x, y) */
+                        386, 50,                /* 矩形宽度和高度 */
+                        COLOR_WHITE             /* 填充颜色 */
                     );
                     lcd_render_text(
                         "请输入密码",            /* 文本内容 */
@@ -901,48 +963,51 @@ void input_password_box()
                     if (strlen(user_info.account_number_buf) == 0) {
                         /* 账号背景文本框 */
                         lcd_draw_filled_rectangle(
-                            104, 248,       /* 左上角坐标 (x, y) */
-                            386, 50,        /* 矩形宽度和高度 */
-                            COLOR_WHITE     /* 填充颜色 */
+                            104, 248,                   /* 左上角坐标 (x, y) */
+                            386, 50,                    /* 矩形宽度和高度 */
+                            COLOR_WHITE                 /* 填充颜色 */
                         );
                         lcd_render_text(
-                            "请输入要注册的账号",                       /* 文本内容 */
-                            104, 260,                           /* 起始坐标 (x, y) */
-                            COLOR_LIGHTGRAY,                    /* 文本颜色 */
-                            25                                  /* 字体大小 */
+                            "请输入要注册的账号",         /* 文本内容 */
+                            104, 260,                   /* 起始坐标 (x, y) */
+                            COLOR_LIGHTGRAY,            /* 文本颜色 */
+                            25                          /* 字体大小 */
                         );
                     }
 
+                    /* 默认隐藏密码 */
                     show_bmp_to_lcd("hide_password.bmp", 448, 315, 40, 40);
                     while (2) {
                         ts_fun();
                         if (input_x >= 450 && input_x <= 495 && input_y >= 322 && input_y <= 360) {
-                            /* 切换标志变量 */ 
+                            /* 切换显示密码开关 */ 
                             show_hide_password_flags = !show_hide_password_flags;
                             if (show_hide_password_flags) {
+                                /* 显示密码 */
                                 lcd_draw_filled_rectangle(
-                                    104, 310,       /* 左上角坐标 (x, y) */
-                                    386, 50,        /* 矩形宽度和高度 */
-                                    COLOR_WHITE     /* 填充颜色 */
+                                    104, 310,                   /* 左上角坐标 (x, y) */
+                                    386, 50,                    /* 矩形宽度和高度 */
+                                    COLOR_WHITE                 /* 填充颜色 */
                                 );
                                 lcd_render_text(
-                                    "请输入密码",            /* 文本内容 */
-                                    104, 323,               /* 起始坐标 (x, y) */
-                                    COLOR_LIGHTGRAY,        /* 文本颜色 */
-                                    25                      /* 字体大小 */
+                                    "请输入密码",                /* 文本内容 */
+                                    104, 323,                   /* 起始坐标 (x, y) */
+                                    COLOR_LIGHTGRAY,            /* 文本颜色 */
+                                    25                          /* 字体大小 */
                                 );
                                 show_bmp_to_lcd("show_password.bmp", 448, 315, 40, 40);
                             } else {
+                                /* 隐藏密码 */
                                 lcd_draw_filled_rectangle(
-                                    104, 310,       /* 左上角坐标 (x, y) */
-                                    386, 50,        /* 矩形宽度和高度 */
-                                    COLOR_WHITE     /* 填充颜色 */
+                                    104, 310,                   /* 左上角坐标 (x, y) */
+                                    386, 50,                    /* 矩形宽度和高度 */
+                                    COLOR_WHITE                 /* 填充颜色 */
                                 );
                                 lcd_render_text(
-                                    "请输入密码",            /* 文本内容 */
-                                    104, 323,               /* 起始坐标 (x, y) */
-                                    COLOR_LIGHTGRAY,        /* 文本颜色 */
-                                    25                      /* 字体大小 */
+                                    "请输入密码",                /* 文本内容 */
+                                    104, 323,                   /* 起始坐标 (x, y) */
+                                    COLOR_LIGHTGRAY,            /* 文本颜色 */
+                                    25                          /* 字体大小 */
                                 );
                                 show_bmp_to_lcd("hide_password.bmp", 448, 315, 40, 40);
                             }
@@ -953,7 +1018,8 @@ void input_password_box()
                             input_password_box();
                             break;
                         } else if (input_x >= 104 && input_x <= 248 && input_y >= 400 && input_y <= 500) {
-                            login_allow_flags = 0;    /* 空账号与密码强制不允许登录 */
+                            /* 空账号与密码强制不允许登录 */
+                            login_allow_flags = 0;    
                             login_judgment();
                             return;
                         } else if (input_x >= 250 && input_x <= 361 && input_y >= 424 && input_y <= 484) {
@@ -967,74 +1033,73 @@ void input_password_box()
                     }
                     break;
                 }
-
                 /* 非空密码时 密码位数：8-12 */
                 if (strlen(user_info.password_number_buf) >= 8 && strlen(user_info.password_number_buf) <= 12) {
                     /* 密码背景文本框 */
                     lcd_draw_filled_rectangle(
-                        104, 310,       /* 左上角坐标 (x, y) */
-                        386, 50,        /* 矩形宽度和高度 */
-                        COLOR_WHITE     /* 填充颜色 */
+                        104, 310,                           /* 左上角坐标 (x, y) */
+                        386, 50,                            /* 矩形宽度和高度 */
+                        COLOR_WHITE                         /* 填充颜色 */
                     );
                     /* 密码输入文本框 */
                     lcd_render_text_with_box(
-                        user_info.hide_password_number_buf,      /* 文本内容 */
-                        104, 310,                /* 起始坐标 (x, y) */
-                        COLOR_BLACK,             /* 文本颜色 */  
-                        COLOR_WHITE,             /* 文本框背景颜色 */
-                        0,                       /* 文本与文本框边缘的间距 */
-                        BOX_STYLE_RECTANGLE,     /* 矩形样式 */
-                        0,                       /* 矩形样式不需要半径 */
-                        50,                      /* 字体大小 */
-                        386,                       /* 文本框宽度 */
-                        50                        /* 文本框高度 */
+                        user_info.hide_password_number_buf, /* 文本内容 */
+                        104, 310,                           /* 起始坐标 (x, y) */
+                        COLOR_BLACK,                        /* 文本颜色 */  
+                        COLOR_WHITE,                        /* 文本框背景颜色 */
+                        0,                                  /* 文本与文本框边缘的间距 */
+                        BOX_STYLE_RECTANGLE,                /* 矩形样式 */
+                        0,                                  /* 矩形样式不需要半径 */
+                        50,                                 /* 字体大小 */
+                        386,                                /* 文本框宽度 */
+                        50                                  /* 文本框高度 */
                     );
                     show_bmp_to_lcd("hide_password.bmp", 448, 315, 40, 40);
                     while (3) {
                         ts_fun();
                         if (input_x >= 450 && input_x <= 495 && input_y >= 322 && input_y <= 360) {
-                            /* 切换标志变量 */ 
+                            /* 切换显示隐藏密码开关 */ 
                             show_hide_password_flags = !show_hide_password_flags;
                             if (show_hide_password_flags) {
                                 /* 显示密码 */
                                 lcd_draw_filled_rectangle(
-                                    104, 310,       /* 左上角坐标 (x, y) */
-                                    386, 50,        /* 矩形宽度和高度 */
-                                    COLOR_WHITE     /* 填充颜色 */
+                                    104, 310,                       /* 左上角坐标 (x, y) */
+                                    386, 50,                        /* 矩形宽度和高度 */
+                                    COLOR_WHITE                     /* 填充颜色 */
                                 );
                                 /* 密码输入文本框 */
                                 lcd_render_text_with_box(
-                                    user_info.password_number_buf,      /* 文本内容 */
-                                    104, 310,                /* 起始坐标 (x, y) */
-                                    COLOR_BLACK,             /* 文本颜色 */  
-                                    COLOR_WHITE,             /* 文本框背景颜色 */
-                                    0,                       /* 文本与文本框边缘的间距 */
-                                    BOX_STYLE_RECTANGLE,     /* 矩形样式 */
-                                    0,                       /* 矩形样式不需要半径 */
-                                    50,                      /* 字体大小 */
-                                    386,                       /* 文本框宽度 */
-                                    50                        /* 文本框高度 */
+                                    user_info.password_number_buf,  /* 文本内容 */
+                                    104, 310,                       /* 起始坐标 (x, y) */
+                                    COLOR_BLACK,                    /* 文本颜色 */  
+                                    COLOR_WHITE,                    /* 文本框背景颜色 */
+                                    0,                              /* 文本与文本框边缘的间距 */
+                                    BOX_STYLE_RECTANGLE,            /* 矩形样式 */
+                                    0,                              /* 矩形样式不需要半径 */
+                                    50,                             /* 字体大小 */
+                                    386,                            /* 文本框宽度 */
+                                    50                              /* 文本框高度 */
                                 );
                                 show_bmp_to_lcd("show_password.bmp", 448, 315, 40, 40);
                             } else {
                                 /* 隐藏密码 */
                                 lcd_draw_filled_rectangle(
-                                    104, 310,       /* 左上角坐标 (x, y) */
-                                    386, 50,        /* 矩形宽度和高度 */
-                                    COLOR_WHITE     /* 填充颜色 */
+                                    104, 310,                       /* 左上角坐标 (x, y) */
+                                    386, 50,                        /* 矩形宽度和高度 */
+                                    COLOR_WHITE                     /* 填充颜色 */
                                 );
-                                /* 密码输入文本框 */
+                                /* 渲染密码背景文本框 */
                                 lcd_render_text_with_box(
-                                    user_info.hide_password_number_buf,      /* 文本内容 */
-                                    104, 310,                /* 起始坐标 (x, y) */
-                                    COLOR_BLACK,             /* 文本颜色 */  
-                                    COLOR_WHITE,             /* 文本框背景颜色 */
-                                    0,                       /* 文本与文本框边缘的间距 */
-                                    BOX_STYLE_RECTANGLE,     /* 矩形样式 */
-                                    0,                       /* 矩形样式不需要半径 */
-                                    50,                      /* 字体大小 */
-                                    386,                       /* 文本框宽度 */
-                                    50                        /* 文本框高度 */
+                                    user_info.hide_password_number_buf,  /* 文本内容 */
+                                    104, 310,                            /* 起始坐标 (x, y) */
+                                    COLOR_BLACK,                         /* 文本颜色 */  
+                                    COLOR_WHITE,                         /* 文本框背景颜色 */
+                                    0,                                   /* 文本与文本框边缘的间距 */
+                                    BOX_STYLE_RECTANGLE,                 /* 矩形样式 */
+                                    0,                                   /* 矩形样式不需要半径 */
+                                    50,                                  /* 字体大小 */
+                                    386,                                 /* 文本框宽度 */
+                                    50                                   /* 文本框高度 */
                                 );
                                 show_bmp_to_lcd("hide_password.bmp", 448, 315, 40, 40);
                             }
@@ -1045,7 +1110,8 @@ void input_password_box()
                             input_password_box();
                             break;
                         } else if (input_x >= 104 && input_x <= 248 && input_y >= 400 && input_y <= 500) {
-                            login_allow_flags = 1;    /* 满足输入条件，允许登录 */
+                            /* 满足输入条件，允许登录 */
+                            login_allow_flags = 1;    
                             login_judgment();
                             return;
                         } else if (input_x >= 250 && input_x <= 361 && input_y >= 424 && input_y <= 484) {
@@ -1061,15 +1127,15 @@ void input_password_box()
                     /* 密码位数小于8或大于12 */
                     lcd_render_text_with_box(
                         "密码不符合要求，请重新输入8-12位密码！",          /* 文本内容 */
-                        233, 400,                       /* 起始坐标 (x, y) */
-                        COLOR_WHITE,                    /* 文本颜色 */
-                        COLOR_LIGHTGRAY,                /* 文本框背景颜色 */
-                        10,                             /* 文本与文本框边缘的间距 */
-                        BOX_STYLE_ROUNDED,              /* 圆角样式 */
-                        15,                             /* 圆角半径 */
-                        30,                             /* 字体大小 */
-                        0,                              /* 文本框宽度 */
-                        0                               /* 文本框高度 */
+                        233, 400,                                       /* 起始坐标 (x, y) */
+                        COLOR_WHITE,                                    /* 文本颜色 */
+                        COLOR_LIGHTGRAY,                                /* 文本框背景颜色 */
+                        10,                                             /* 文本与文本框边缘的间距 */
+                        BOX_STYLE_ROUNDED,                              /* 圆角矩形样式 */
+                        15,                                             /* 圆角矩形半径 */
+                        30,                                             /* 字体大小 */
+                        0,                                              /* 文本框宽度 */
+                        0                                               /* 文本框高度 */
                     );
                     sleep(3);
                     login_allow_flags = 0;
@@ -1081,143 +1147,144 @@ void input_password_box()
                 }
                 break;
             }
-            // 处理键盘点击事件
-            if (input_x >= 224 && input_x <= 810 && input_y >= 503 && input_y <= 600) { //空格键
+
+            /* 处理键盘点击事件 */ 
+            if (input_x >= 224 && input_x <= 810 && input_y >= 503 && input_y <= 600) { 
                 strcat(user_info.password_number_buf, " ");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 0 && input_x <= 100 && input_y >= 198 && input_y <= 254) { //Q键
+            if (input_x >= 0 && input_x <= 100 && input_y >= 198 && input_y <= 254) { 
                 strcat(user_info.password_number_buf, "Q");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 144 && input_x <= 210 && input_y >= 198 && input_y <= 254) { //W键
+            if (input_x >= 144 && input_x <= 210 && input_y >= 198 && input_y <= 254) { 
                 strcat(user_info.password_number_buf, "W");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 247 && input_x <= 301 && input_y >= 198 && input_y <= 254) { //E键
+            if (input_x >= 247 && input_x <= 301 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.password_number_buf, "E");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 331 && input_x <= 400 && input_y >= 198 && input_y <= 254) { //R键
+            if (input_x >= 331 && input_x <= 400 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.password_number_buf, "R");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 436 && input_x <= 495 && input_y >= 198 && input_y <= 254) { //T键
+            if (input_x >= 436 && input_x <= 495 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.password_number_buf, "T");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 544 && input_x <= 600 && input_y >= 198 && input_y <= 254) { //Y键
+            if (input_x >= 544 && input_x <= 600 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.password_number_buf, "Y");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 640 && input_x <= 694 && input_y >= 198 && input_y <= 254) { //U键
+            if (input_x >= 640 && input_x <= 694 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.password_number_buf, "U");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 740 && input_x <= 797 && input_y >= 198 && input_y <= 254) { //I键
+            if (input_x >= 740 && input_x <= 797 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.password_number_buf, "I");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 834 && input_x <= 900 && input_y >= 198 && input_y <= 254) { //O键
+            if (input_x >= 834 && input_x <= 900 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.password_number_buf, "O");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 927 && input_x <= 1024 && input_y >= 198 && input_y <= 254) { //P键
+            if (input_x >= 927 && input_x <= 1024 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.password_number_buf, "P");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 104 && input_x <= 150 && input_y >= 297 && input_y <= 353) { //A键
+            if (input_x >= 104 && input_x <= 150 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.password_number_buf, "A");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 194 && input_x <= 264 && input_y >= 297 && input_y <= 353) { //S键
+            if (input_x >= 194 && input_x <= 264 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.password_number_buf, "S");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 291 && input_x <= 350 && input_y >= 297 && input_y <= 353) { //D键
+            if (input_x >= 291 && input_x <= 350 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.password_number_buf, "D");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 385 && input_x <= 447 && input_y >= 297 && input_y <= 353) { //F键
+            if (input_x >= 385 && input_x <= 447 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.password_number_buf, "F");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 489 && input_x <= 544 && input_y >= 297 && input_y <= 353) { //G键
+            if (input_x >= 489 && input_x <= 544 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.password_number_buf, "G");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 589 && input_x <= 647 && input_y >= 297 && input_y <= 353) { //H键
+            if (input_x >= 589 && input_x <= 647 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.password_number_buf, "H");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 697 && input_x <= 742 && input_y >= 297 && input_y <= 353) { //J键
+            if (input_x >= 697 && input_x <= 742 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.password_number_buf, "J");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 789 && input_x <= 847 && input_y >= 297 && input_y <= 353) { //K键
+            if (input_x >= 789 && input_x <= 847 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.password_number_buf, "K");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 894 && input_x <= 938 && input_y >= 297 && input_y <= 353) { //L键
+            if (input_x >= 894 && input_x <= 938 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.password_number_buf, "L");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 155 && input_x <= 205 && input_y >= 400 && input_y <= 458) { //Z键
+            if (input_x >= 155 && input_x <= 205 && input_y >= 400 && input_y <= 458) {
                 strcat(user_info.password_number_buf, "Z");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 249 && input_x <= 297 && input_y >= 400 && input_y <= 458) { //X键
+            if (input_x >= 249 && input_x <= 297 && input_y >= 400 && input_y <= 458) {
                 strcat(user_info.password_number_buf, "X");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 342 && input_x <= 400 && input_y >= 400 && input_y <= 458) { //C键
+            if (input_x >= 342 && input_x <= 400 && input_y >= 400 && input_y <= 458) {
                 strcat(user_info.password_number_buf, "C");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 445 && input_x <= 495 && input_y >= 400 && input_y <= 458) { //V键
+            if (input_x >= 445 && input_x <= 495 && input_y >= 400 && input_y <= 458) {
                 strcat(user_info.password_number_buf, "V");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 541 && input_x <= 589 && input_y >= 400 && input_y <= 458) { //B键
+            if (input_x >= 541 && input_x <= 589 && input_y >= 400 && input_y <= 458) {
                 strcat(user_info.password_number_buf, "B");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 641 && input_x <= 692 && input_y >= 400 && input_y <= 458) { //N键
+            if (input_x >= 641 && input_x <= 692 && input_y >= 400 && input_y <= 458) {
                 strcat(user_info.password_number_buf, "N");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 739 && input_x <= 800 && input_y >= 400 && input_y <= 458) { //M键
+            if (input_x >= 739 && input_x <= 800 && input_y >= 400 && input_y <= 458) {
                 strcat(user_info.password_number_buf, "M");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 0 && input_x <= 120 && input_y >= 393 && input_y <= 600) { //删除键
+            if (input_x >= 0 && input_x <= 120 && input_y >= 393 && input_y <= 600) {
                 if (strlen(user_info.password_number_buf) > 0) {
                     user_info.password_number_buf[strlen(user_info.password_number_buf) - 1] = '\0';
                 }
@@ -1227,38 +1294,39 @@ void input_password_box()
                 input_changed = 1;  
             }
 
+            /* 标记输入有变化 */
             if (input_changed) {
-                // 绘制密码输入文本框背景
+                /* 渲染密码文本框背景 */ 
                 lcd_draw_filled_rectangle(
-                    0, 0,               /* 左上角坐标 (x, y) */
-                    1024, 143,          /* 矩形宽度和高度 */
-                    COLOR_WHITE         /* 填充颜色 */ 
+                    0, 0,                           /* 左上角坐标 (x, y) */
+                    1024, 143,                      /* 矩形宽度和高度 */
+                    COLOR_WHITE                     /* 填充颜色 */ 
                 );
                 /* 密码输入文本框 */ 
                 lcd_render_text_with_box(
-                    user_info.password_number_buf,      /* 文本内容 */
-                    70, 51,                /* 起始坐标 (x, y) */
-                    COLOR_BLACK,             /* 文本颜色 */ 
-                    COLOR_WHITE,             /* 文本框背景颜色 */ 
-                    0,                       /* 文本与文本框边缘的间距 */ 
-                    BOX_STYLE_RECTANGLE,     /* 矩形样式 */ 
-                    0,                       /* 矩形样式不需要半径 */
-                    60,                      /* 字体大小 */
-                    0,                     /* 文本框宽度 */
-                    0                       /* 文本框高度 */
+                    user_info.password_number_buf,  /* 文本内容 */
+                    70, 51,                         /* 起始坐标 (x, y) */
+                    COLOR_BLACK,                    /* 文本颜色 */ 
+                    COLOR_WHITE,                    /* 文本框背景颜色 */ 
+                    0,                              /* 文本与文本框边缘的间距 */ 
+                    BOX_STYLE_RECTANGLE,            /* 矩形样式 */ 
+                    0,                              /* 矩形样式不需要半径 */
+                    60,                             /* 字体大小 */
+                    0,                              /* 文本框宽度 */
+                    0                               /* 文本框高度 */
                 );        
                 /* 确认按钮 */
                 lcd_render_text_with_box(
-                    "确认",                 /* 文本内容 */
-                    800, 51,                /* 起始坐标 (x, y) */
-                    COLOR_WHITE,            /* 文本颜色 */ 
-                    COLOR_LIGHTGRAY,        /* 文本框背景颜色 */ 
-                    0,                      /* 文本与文本框边缘的间距 */ 
-                    BOX_STYLE_ROUNDED,      /* 矩形样式 */ 
-                    15,                     /* 矩形样式不需要半径 */
-                    60,                     /* 字体大小 */
-                    0,                      /* 文本框宽度 */
-                    0                       /* 文本框高度 */
+                    "确认",                         /* 文本内容 */
+                    800, 51,                        /* 起始坐标 (x, y) */
+                    COLOR_WHITE,                    /* 文本颜色 */ 
+                    COLOR_LIGHTGRAY,                /* 文本框背景颜色 */ 
+                    0,                              /* 文本与文本框边缘的间距 */ 
+                    BOX_STYLE_ROUNDED,              /* 圆角矩形样式 */ 
+                    15,                             /* 圆角矩形半径 */
+                    60,                             /* 字体大小 */
+                    0,                              /* 文本框宽度 */
+                    0                               /* 文本框高度 */
                 );
             }
         }
@@ -1273,60 +1341,59 @@ void register_account_box()
 {
     /* 初始化字库 */
     if (lcd_init("/dev/fb0", "simkai.ttf") != 0) {
-        printf("初始化失败。\n");
+        printf("Font library initialization failed.\n");
         return;
     }
 
-    /* 置顶账号输入框，以解决闪烁问题 */
-    show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
-    /* 绘制账号输入文本框背景 */
+    /* 加载背景图层 */
+    show_bmp_to_lcd("login_initialization.bmp", 0, 0, 1024, 600);    
+    /* 渲染账号背景文本框 */
     lcd_draw_filled_rectangle(
-        0, 0,               /* 左上角坐标 (x, y) */
-        1024, 143,          /* 矩形宽度和高度 */
-        COLOR_WHITE         /* 填充颜色 */ 
+        0, 0,                           /* 左上角坐标 (x, y) */
+        1024, 143,                      /* 矩形宽度和高度 */
+        COLOR_WHITE                     /* 填充颜色 */ 
     );
-    /* 绘制账号输入文本框 */
     lcd_render_text_with_box(
-        user_info.account_number_buf,      /* 文本内容 */
-        70, 51,                /* 起始坐标 (x, y) */
-        COLOR_BLACK,             /* 文本颜色 */ 
-        COLOR_WHITE,             /* 文本框背景颜色 */ 
-        0,                       /* 文本与文本框边缘的间距 */ 
-        BOX_STYLE_RECTANGLE,     /* 矩形样式 */ 
-        0,                       /* 矩形样式不需要半径 */
-        60,                      /* 字体大小 */
-        0,                     /* 文本框宽度 */
-        0                       /* 文本框高度 */
+        user_info.account_number_buf,   /* 文本内容 */
+        70, 51,                         /* 起始坐标 (x, y) */
+        COLOR_BLACK,                    /* 文本颜色 */ 
+        COLOR_WHITE,                    /* 文本框背景颜色 */ 
+        0,                              /* 文本与文本框边缘的间距 */ 
+        BOX_STYLE_RECTANGLE,            /* 矩形样式 */ 
+        0,                              /* 矩形样式不需要半径 */
+        60,                             /* 字体大小 */
+        0,                              /* 文本框宽度 */
+        0                               /* 文本框高度 */
     );
-
     /* 绘制确认按钮 */
     lcd_render_text_with_box(
-        "确认",      /* 文本内容 */
-        800, 51,                /* 起始坐标 (x, y) */
-        COLOR_WHITE,             /* 文本颜色 */ 
-        COLOR_LIGHTGRAY,             /* 文本框背景颜色 */ 
-        0,                       /* 文本与文本框边缘的间距 */ 
-        BOX_STYLE_ROUNDED,     /* 矩形样式 */ 
-        15,                       /* 矩形样式不需要半径 */
-        60,                      /* 字体大小 */
-        0,                       /* 文本框宽度 */
-        0                        /* 文本框高度 */
+        "确认",                         /* 文本内容 */
+        800, 51,                        /* 起始坐标 (x, y) */
+        COLOR_WHITE,                    /* 文本颜色 */ 
+        COLOR_LIGHTGRAY,                /* 文本框背景颜色 */ 
+        0,                              /* 文本与文本框边缘的间距 */ 
+        BOX_STYLE_ROUNDED,              /* 圆角矩形样式 */ 
+        15,                             /* 圆角矩形半径 */
+        60,                             /* 字体大小 */
+        0,                              /* 文本框宽度 */
+        0                               /* 文本框高度 */
     );
-    keyboard();    /* 加载键盘 */
+    /* 加载键盘 */
+    keyboard();    
 
-    // 打开触摸屏文件
+    /* 打开触摸屏文件 */ 
     int input_fd = open("/dev/input/event1", O_RDWR);
     if (input_fd == -1) {
         perror("Failed to open touchscreen device");
         return;
     }
-
     struct input_event input_buf;
 
     while (1) {
-        int input_changed = 0;  // 标记输入是否有变化
+        /* 标记输入是否有变化 */
+        int input_changed = 0;  
 
-        // 读取触摸屏数据
+        /* 读取触摸屏数据 */ 
         read(input_fd, &input_buf, sizeof(input_buf));
         if (input_buf.type == EV_ABS && input_buf.code == ABS_X) {
             input_x = input_buf.value;
@@ -1335,41 +1402,43 @@ void register_account_box()
             input_y = input_buf.value;
         }
         if (input_buf.type == EV_KEY && input_buf.code == BTN_TOUCH && input_buf.value == 0) {
-            // 判断是否点击了确认按钮
             if ((input_x >= 800 && input_x <= 900 && input_y >= 51 && input_y <= 111) || 
-                (input_x >= 876 && input_x <= 1024 && input_y >= 400 && input_y <= 600)) {  /* 确认按钮和确认键 */
-                /* 处理确认按钮点击事件 */ 
+                (input_x >= 876 && input_x <= 1024 && input_y >= 400 && input_y <= 600)) {  
+                /* 点击到确认按钮和确认键 */ 
+                
+                /* 处理账号输入 */
                 if (strlen(user_info.account_number_buf) == 0) {
-                    show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
-                    /* 账号背景文本框 */
+                    show_bmp_to_lcd("login_initialization.bmp", 0, 0, 1024, 600);    
+                    /* 渲染账号背景文本框 */
                     lcd_draw_filled_rectangle(
-                        104, 248,       /* 左上角坐标 (x, y) */
-                        386, 50,        /* 矩形宽度和高度 */
-                        COLOR_WHITE     /* 填充颜色 */
+                        104, 248,               /* 左上角坐标 (x, y) */
+                        386, 50,                /* 矩形宽度和高度 */
+                        COLOR_WHITE             /* 填充颜色 */
                     );
                     lcd_render_text(
-                        "请输入要注册的账号",                       /* 文本内容 */
-                        104, 260,                           /* 起始坐标 (x, y) */
-                        COLOR_LIGHTGRAY,                    /* 文本颜色 */
-                        25                                  /* 字体大小 */
+                        "请输入要注册的账号",     /* 文本内容 */
+                        104, 260,               /* 起始坐标 (x, y) */
+                        COLOR_LIGHTGRAY,        /* 文本颜色 */
+                        25                      /* 字体大小 */
                     );            
                 } else if (strlen(user_info.account_number_buf) <= 12) {
                     /* 账号不超过12位 */
-                    show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
-                    /* 账号输入文本框 */ 
+                    show_bmp_to_lcd("login_initialization.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
+                    /* 渲染账号输入文本框 */ 
                     lcd_render_text_with_box(
                         user_info.account_number_buf,      /* 文本内容 */
-                        104, 248,                /* 起始坐标 (x, y) */
-                        COLOR_BLACK,             /* 文本颜色 */ 
-                        COLOR_WHITE,             /* 文本框背景颜色 */ 
-                        0,                       /* 文本与文本框边缘的间距 */ 
-                        BOX_STYLE_RECTANGLE,     /* 矩形样式 */ 
-                        0,                       /* 矩形样式不需要半径 */
-                        50,                      /* 字体大小 */
-                        386,                     /* 文本框宽度 */
-                        50                       /* 文本框高度 */
+                        104, 248,                          /* 起始坐标 (x, y) */
+                        COLOR_BLACK,                       /* 文本颜色 */ 
+                        COLOR_WHITE,                       /* 文本框背景颜色 */ 
+                        0,                                 /* 文本与文本框边缘的间距 */ 
+                        BOX_STYLE_RECTANGLE,               /* 矩形样式 */ 
+                        0,                                 /* 矩形样式不需要半径 */
+                        50,                                /* 字体大小 */
+                        386,                               /* 文本框宽度 */
+                        50                                 /* 文本框高度 */
                     );  
                 } else {
+                    /* 账号超过12位 */
                     lcd_render_text_with_box(
                         "账号超过12位，请重新注册！",     /* 文本内容 */
                         310, 400,                       /* 起始坐标 (x, y) */
@@ -1387,7 +1456,8 @@ void register_account_box()
                     memset(user_info.account_number_buf, 0, sizeof(user_info.account_number_buf));
                     memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
                     memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
-                    register_account_box(); /* 重新注册 */
+                    /* 重新注册 */
+                    register_account_box(); 
                     return;
                 }
 
@@ -1399,7 +1469,7 @@ void register_account_box()
                 * 优化整体结构。
                 */
 
-
+                /* 处理密码输入 */
                 /* 显示或隐藏密码开关 */
                 int show_hide_password_flags = 0;
                 /* 密码背景文本框 */
@@ -1408,45 +1478,46 @@ void register_account_box()
                     386, 50,        /* 矩形宽度和高度 */
                     COLOR_WHITE     /* 填充颜色 */
                 );
-
                 /* 空密码时 */
                 if (strlen(user_info.password_number_buf) == 0) {
                     lcd_render_text(
-                        "请输入不少于8位数的密码",            /* 文本内容 */
-                        104, 323,               /* 起始坐标 (x, y) */
-                        COLOR_LIGHTGRAY,        /* 文本颜色 */
-                        25                      /* 字体大小 */
+                        "请输入不少于8位数的密码",                    /* 文本内容 */
+                        104, 323,                                   /* 起始坐标 (x, y) */
+                        COLOR_LIGHTGRAY,                            /* 文本颜色 */
+                        25                                          /* 字体大小 */
                     );
                     show_bmp_to_lcd("hide_password.bmp", 448, 315, 40, 40);
                     while (3) {
                         ts_fun();
                         if (input_x >= 450 && input_x <= 495 && input_y >= 322 && input_y <= 360) {
-                            /* 切换标志变量 */ 
+                            /* 切换显示隐藏密码开关 */ 
                             show_hide_password_flags = !show_hide_password_flags;
                             if (show_hide_password_flags) {
+                                /* 显示密码 */
                                 lcd_draw_filled_rectangle(
-                                    104, 310,       /* 左上角坐标 (x, y) */
-                                    386, 50,        /* 矩形宽度和高度 */
-                                    COLOR_WHITE     /* 填充颜色 */
+                                    104, 310,                   /* 左上角坐标 (x, y) */
+                                    386, 50,                    /* 矩形宽度和高度 */
+                                    COLOR_WHITE                 /* 填充颜色 */
                                 );
                                 lcd_render_text(
-                                    "请输入不少于8位数的密码",            /* 文本内容 */
-                                    104, 323,               /* 起始坐标 (x, y) */
-                                    COLOR_LIGHTGRAY,        /* 文本颜色 */
-                                    25                      /* 字体大小 */
+                                    "请输入不少于8位数的密码",    /* 文本内容 */
+                                    104, 323,                   /* 起始坐标 (x, y) */
+                                    COLOR_LIGHTGRAY,            /* 文本颜色 */
+                                    25                          /* 字体大小 */
                                 );
                                 show_bmp_to_lcd("show_password.bmp", 448, 315, 40, 40);
                             } else {
+                                /* 隐藏密码 */
                                 lcd_draw_filled_rectangle(
-                                    104, 310,       /* 左上角坐标 (x, y) */
-                                    386, 50,        /* 矩形宽度和高度 */
-                                    COLOR_WHITE     /* 填充颜色 */
+                                    104, 310,                   /* 左上角坐标 (x, y) */
+                                    386, 50,                    /* 矩形宽度和高度 */
+                                    COLOR_WHITE                 /* 填充颜色 */
                                 );
                                 lcd_render_text(
-                                    "请输入不少于8位数的密码",            /* 文本内容 */
-                                    104, 323,               /* 起始坐标 (x, y) */
-                                    COLOR_LIGHTGRAY,        /* 文本颜色 */
-                                    25                      /* 字体大小 */
+                                    "请输入不少于8位数的密码",    /* 文本内容 */
+                                    104, 323,                   /* 起始坐标 (x, y) */
+                                    COLOR_LIGHTGRAY,            /* 文本颜色 */
+                                    25                          /* 字体大小 */
                                 );
                                 show_bmp_to_lcd("hide_password.bmp", 448, 315, 40, 40);
                             }
@@ -1457,18 +1528,19 @@ void register_account_box()
                             register_password_box();
                             break;
                         } else if (input_x >= 250 && input_x <= 361 && input_y >= 424 && input_y <= 484) {
-                            register_allow_flags = 0; /* 空账号与密码强制不允许注册 */
+                            /* 空账号与密码强制不允许注册 */
+                            register_allow_flags = 0; 
                             register_judgment();
-                            return;  /* 强行退出函数，避免死循环 */  
+                            return;  
                         } else if (input_x >= 104 && input_x <= 248 && input_y >= 400 && input_y <= 500) {
                             lcd_render_text_with_box(
-                                "当前在注册页面，禁止登录！",          /* 文本内容 */
-                                350, 400,                       /* 起始坐标 (x, y) */
+                                "当前在注册页面，禁止登录！",     /* 文本内容 */
+                                340, 400,                       /* 起始坐标 (x, y) */
                                 COLOR_WHITE,                    /* 文本颜色 */
                                 COLOR_LIGHTGRAY,                /* 文本框背景颜色 */
                                 10,                             /* 文本与文本框边缘的间距 */
-                                BOX_STYLE_ROUNDED,              /* 圆角样式 */
-                                15,                             /* 圆角半径 */
+                                BOX_STYLE_ROUNDED,              /* 圆角矩形样式 */
+                                15,                             /* 圆角矩形半径 */
                                 30,                             /* 字体大小 */
                                 0,                              /* 文本框宽度 */
                                 0                               /* 文本框高度 */
@@ -1479,78 +1551,77 @@ void register_account_box()
                             memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
                             memset(user_info.hide_password_number_buf, 0, sizeof(user_info.hide_password_number_buf));
                             login_boot();
-                            return; /* 强行退出函数，避免死循环 */
+                            return; 
                         }
                     }
                     break;
                 }
-
                 /* 非空密码时 */
                 if (strlen(user_info.password_number_buf) != 0) {
                     lcd_draw_filled_rectangle(
-                        104, 310,       /* 左上角坐标 (x, y) */
-                        386, 50,        /* 矩形宽度和高度 */
-                        COLOR_WHITE     /* 填充颜色 */
+                        104, 310,                           /* 左上角坐标 (x, y) */
+                        386, 50,                            /* 矩形宽度和高度 */
+                        COLOR_WHITE                         /* 填充颜色 */
                     );
-                    /* 密码输入文本框 */
+                    /* 渲染密码输入文本框 */
                     lcd_render_text_with_box(
-                        user_info.hide_password_number_buf,      /* 文本内容 */
-                        104, 310,                /* 起始坐标 (x, y) */
-                        COLOR_BLACK,             /* 文本颜色 */  
-                        COLOR_WHITE,             /* 文本框背景颜色 */
-                        0,                       /* 文本与文本框边缘的间距 */
-                        BOX_STYLE_RECTANGLE,     /* 矩形样式 */
-                        0,                       /* 矩形样式不需要半径 */
-                        50,                      /* 字体大小 */
-                        386,                       /* 文本框宽度 */
-                        50                        /* 文本框高度 */
+                        user_info.hide_password_number_buf,     /* 文本内容 */
+                        104, 310,                               /* 起始坐标 (x, y) */
+                        COLOR_BLACK,                            /* 文本颜色 */  
+                        COLOR_WHITE,                            /* 文本框背景颜色 */
+                        0,                                      /* 文本与文本框边缘的间距 */
+                        BOX_STYLE_RECTANGLE,                    /* 矩形样式 */
+                        0,                                      /* 矩形样式不需要半径 */
+                        50,                                     /* 字体大小 */
+                        386,                                    /* 文本框宽度 */
+                        50                                      /* 文本框高度 */
                     );
                     show_bmp_to_lcd("hide_password.bmp", 448, 315, 40, 40);
                     while (4) {
                         ts_fun();
                         if (input_x >= 450 && input_x <= 495 && input_y >= 322 && input_y <= 360) {
-                            /* 切换标志变量 */ 
+                            /* 切换显示密码开关 */ 
                             show_hide_password_flags = !show_hide_password_flags;
                             if (show_hide_password_flags) {
                                 /* 显示密码 */
                                 lcd_draw_filled_rectangle(
-                                    104, 310,       /* 左上角坐标 (x, y) */
-                                    386, 50,        /* 矩形宽度和高度 */
-                                    COLOR_WHITE     /* 填充颜色 */
+                                    104, 310,                       /* 左上角坐标 (x, y) */
+                                    386, 50,                        /* 矩形宽度和高度 */
+                                    COLOR_WHITE                     /* 填充颜色 */
                                 );
                                 /* 密码输入文本框 */
                                 lcd_render_text_with_box(
-                                    user_info.password_number_buf,      /* 文本内容 */
-                                    104, 310,                /* 起始坐标 (x, y) */
-                                    COLOR_BLACK,             /* 文本颜色 */  
-                                    COLOR_WHITE,             /* 文本框背景颜色 */
-                                    0,                       /* 文本与文本框边缘的间距 */
-                                    BOX_STYLE_RECTANGLE,     /* 矩形样式 */
-                                    0,                       /* 矩形样式不需要半径 */
-                                    50,                      /* 字体大小 */
-                                    386,                       /* 文本框宽度 */
-                                    50                        /* 文本框高度 */
+                                    user_info.password_number_buf,  /* 文本内容 */
+                                    104, 310,                       /* 起始坐标 (x, y) */
+                                    COLOR_BLACK,                    /* 文本颜色 */  
+                                    COLOR_WHITE,                    /* 文本框背景颜色 */
+                                    0,                              /* 文本与文本框边缘的间距 */
+                                    BOX_STYLE_RECTANGLE,            /* 矩形样式 */
+                                    0,                              /* 矩形样式不需要半径 */
+                                    50,                             /* 字体大小 */
+                                    386,                            /* 文本框宽度 */
+                                    50                              /* 文本框高度 */
                                 );
                                 show_bmp_to_lcd("show_password.bmp", 448, 315, 40, 40);
                             } else {
                                 /* 隐藏密码 */
                                 lcd_draw_filled_rectangle(
-                                    104, 310,       /* 左上角坐标 (x, y) */
-                                    386, 50,        /* 矩形宽度和高度 */
-                                    COLOR_WHITE     /* 填充颜色 */
+                                    104, 310,                       /* 左上角坐标 (x, y) */
+                                    386, 50,                        /* 矩形宽度和高度 */
+                                    COLOR_WHITE                     /* 填充颜色 */
                                 );
-                                /* 密码输入文本框 */
+                                /* 渲染密码输入文本框 */
                                 lcd_render_text_with_box(
-                                    user_info.hide_password_number_buf,      /* 文本内容 */
-                                    104, 310,                /* 起始坐标 (x, y) */
-                                    COLOR_BLACK,             /* 文本颜色 */  
-                                    COLOR_WHITE,             /* 文本框背景颜色 */
-                                    0,                       /* 文本与文本框边缘的间距 */
-                                    BOX_STYLE_RECTANGLE,     /* 矩形样式 */
-                                    0,                       /* 矩形样式不需要半径 */
-                                    50,                      /* 字体大小 */
-                                    386,                       /* 文本框宽度 */
-                                    50                        /* 文本框高度 */
+                                    user_info.hide_password_number_buf, /* 文本内容 */
+                                    104, 310,                           /* 起始坐标 (x, y) */
+                                    COLOR_BLACK,                        /* 文本颜色 */  
+                                    COLOR_WHITE,                        /* 文本框背景颜色 */
+                                    0,                                  /* 文本与文本框边缘的间距 */
+                                    BOX_STYLE_RECTANGLE,                /* 矩形样式 */
+                                    0,                                  /* 矩形样式不需要半径 */
+                                    50,                                 /* 字体大小 */
+                                    386,                                /* 文本框宽度 */
+                                    50                                  /* 文本框高度 */
                                 );
                                 show_bmp_to_lcd("hide_password.bmp", 448, 315, 40, 40);
                             }
@@ -1561,13 +1632,14 @@ void register_account_box()
                             register_password_box();
                             break;
                         } else if (input_x >= 250 && input_x <= 361 && input_y >= 424 && input_y <= 484) {
-                            register_allow_flags = 1; /* 满足所有输入条件，允许注册 */
+                            /* 满足所有输入条件，允许注册 */
+                            register_allow_flags = 1; 
                             register_judgment();
-                            return;  /* 强行退出函数，避免死循环 */ 
+                            return;
                         } else if (input_x >= 104 && input_x <= 248 && input_y >= 400 && input_y <= 500) {
                              lcd_render_text_with_box(
-                                "当前在注册页面，禁止登录！",          /* 文本内容 */
-                                350, 400,                       /* 起始坐标 (x, y) */
+                                "当前在注册页面，禁止登录！",      /* 文本内容 */
+                                340, 400,                       /* 起始坐标 (x, y) */
                                 COLOR_WHITE,                    /* 文本颜色 */
                                 COLOR_LIGHTGRAY,                /* 文本框背景颜色 */
                                 10,                             /* 文本与文本框边缘的间距 */
@@ -1590,154 +1662,153 @@ void register_account_box()
                 break;  
             }
 
-            // 处理键盘点击事件
-            if (input_x >= 224 && input_x <= 810 && input_y >= 503 && input_y <= 600) { //空格键
+            /* 处理键盘点击事件 */ 
+            if (input_x >= 224 && input_x <= 810 && input_y >= 503 && input_y <= 600) { 
                 strcat(user_info.account_number_buf, " ");
                 input_changed = 1;  
             }
-            if (input_x >= 0 && input_x <= 100 && input_y >= 198 && input_y <= 254) { //Q键
+            if (input_x >= 0 && input_x <= 100 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.account_number_buf, "Q");
                 input_changed = 1;  
             }
-            if (input_x >= 144 && input_x <= 210 && input_y >= 198 && input_y <= 254) { //W键
+            if (input_x >= 144 && input_x <= 210 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.account_number_buf, "W");
                 input_changed = 1;  
             }
-            if (input_x >= 247 && input_x <= 301 && input_y >= 198 && input_y <= 254) { //E键
+            if (input_x >= 247 && input_x <= 301 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.account_number_buf, "E");
                 input_changed = 1;  
             }
-            if (input_x >= 331 && input_x <= 400 && input_y >= 198 && input_y <= 254) { //R键
+            if (input_x >= 331 && input_x <= 400 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.account_number_buf, "R");
                 input_changed = 1;  
             }
-            if (input_x >= 436 && input_x <= 495 && input_y >= 198 && input_y <= 254) { //T键
+            if (input_x >= 436 && input_x <= 495 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.account_number_buf, "T");
                 input_changed = 1;  
             }
-            if (input_x >= 544 && input_x <= 600 && input_y >= 198 && input_y <= 254) { //Y键
+            if (input_x >= 544 && input_x <= 600 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.account_number_buf, "Y");
                 input_changed = 1;  
             }
-            if (input_x >= 640 && input_x <= 694 && input_y >= 198 && input_y <= 254) { //U键
+            if (input_x >= 640 && input_x <= 694 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.account_number_buf, "U");
                 input_changed = 1;  
             }
-            if (input_x >= 740 && input_x <= 797 && input_y >= 198 && input_y <= 254) { //I键
+            if (input_x >= 740 && input_x <= 797 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.account_number_buf, "I");
                 input_changed = 1;  
             }
-            if (input_x >= 834 && input_x <= 900 && input_y >= 198 && input_y <= 254) { //O键
+            if (input_x >= 834 && input_x <= 900 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.account_number_buf, "O");
                 input_changed = 1;  
             }
-            if (input_x >= 927 && input_x <= 1024 && input_y >= 198 && input_y <= 254) { //P键
+            if (input_x >= 927 && input_x <= 1024 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.account_number_buf, "P");
                 input_changed = 1;  
             }
-            if (input_x >= 104 && input_x <= 150 && input_y >= 297 && input_y <= 353) { //A键
+            if (input_x >= 104 && input_x <= 150 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.account_number_buf, "A");
                 input_changed = 1;  
             }
-            if (input_x >= 194 && input_x <= 264 && input_y >= 297 && input_y <= 353) { //S键
+            if (input_x >= 194 && input_x <= 264 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.account_number_buf, "S");
                 input_changed = 1;  
             }
-            if (input_x >= 291 && input_x <= 350 && input_y >= 297 && input_y <= 353) { //D键
+            if (input_x >= 291 && input_x <= 350 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.account_number_buf, "D");
                 input_changed = 1;  
             }
-            if (input_x >= 385 && input_x <= 447 && input_y >= 297 && input_y <= 353) { //F键
+            if (input_x >= 385 && input_x <= 447 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.account_number_buf, "F");
                 input_changed = 1;  
             }
-            if (input_x >= 489 && input_x <= 544 && input_y >= 297 && input_y <= 353) { //G键
+            if (input_x >= 489 && input_x <= 544 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.account_number_buf, "G");
                 input_changed = 1;  
             }
-            if (input_x >= 589 && input_x <= 647 && input_y >= 297 && input_y <= 353) { //H键
+            if (input_x >= 589 && input_x <= 647 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.account_number_buf, "H");
                 input_changed = 1;  
             }
-            if (input_x >= 697 && input_x <= 742 && input_y >= 297 && input_y <= 353) { //J键
+            if (input_x >= 697 && input_x <= 742 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.account_number_buf, "J");
                 input_changed = 1;  
             }
-            if (input_x >= 789 && input_x <= 847 && input_y >= 297 && input_y <= 353) { //K键
+            if (input_x >= 789 && input_x <= 847 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.account_number_buf, "K");
                 input_changed = 1;  
             }
-            if (input_x >= 894 && input_x <= 938 && input_y >= 297 && input_y <= 353) { //L键
+            if (input_x >= 894 && input_x <= 938 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.account_number_buf, "L");
                 input_changed = 1;  
             }
-            if (input_x >= 155 && input_x <= 205 && input_y >= 400 && input_y <= 458) { //Z键
+            if (input_x >= 155 && input_x <= 205 && input_y >= 400 && input_y <= 458) {
                 strcat(user_info.account_number_buf, "Z");
                 input_changed = 1;  
             }
-            if (input_x >= 249 && input_x <= 297 && input_y >= 400 && input_y <= 458) { //X键
+            if (input_x >= 249 && input_x <= 297 && input_y >= 400 && input_y <= 458) {
                 strcat(user_info.account_number_buf, "X");
                 input_changed = 1;  
             }
-            if (input_x >= 342 && input_x <= 400 && input_y >= 400 && input_y <= 458) { //C键
+            if (input_x >= 342 && input_x <= 400 && input_y >= 400 && input_y <= 458) {
                 strcat(user_info.account_number_buf, "C");
                 input_changed = 1;  
             }
-            if (input_x >= 445 && input_x <= 495 && input_y >= 400 && input_y <= 458) { //V键
+            if (input_x >= 445 && input_x <= 495 && input_y >= 400 && input_y <= 458) {
                 strcat(user_info.account_number_buf, "V");
                 input_changed = 1;  
             }
-            if (input_x >= 541 && input_x <= 589 && input_y >= 400 && input_y <= 458) { //B键
+            if (input_x >= 541 && input_x <= 589 && input_y >= 400 && input_y <= 458) {
                 strcat(user_info.account_number_buf, "B");
                 input_changed = 1;  
             }
-            if (input_x >= 641 && input_x <= 692 && input_y >= 400 && input_y <= 458) { //N键
+            if (input_x >= 641 && input_x <= 692 && input_y >= 400 && input_y <= 458) {
                 strcat(user_info.account_number_buf, "N");
                 input_changed = 1;  
             }
-            if (input_x >= 739 && input_x <= 800 && input_y >= 400 && input_y <= 458) { //M键
+            if (input_x >= 739 && input_x <= 800 && input_y >= 400 && input_y <= 458) {
                 strcat(user_info.account_number_buf, "M");
                 input_changed = 1;  
             }
-            if (input_x >= 0 && input_x <= 120 && input_y >= 393 && input_y <= 600) { //删除键
+            if (input_x >= 0 && input_x <= 120 && input_y >= 393 && input_y <= 600) {
                 if (strlen(user_info.account_number_buf) > 0) {
                     user_info.account_number_buf[strlen(user_info.account_number_buf) - 1] = '\0';
                 }
                 input_changed = 1;  
             }
 
+            /* 标记输入变化 */
             if (input_changed) {
-                // 绘制账号输入文本框背景
                 lcd_draw_filled_rectangle(
-                    0, 0,               /* 左上角坐标 (x, y) */
-                    1024, 143,          /* 矩形宽度和高度 */
-                    COLOR_WHITE         /* 填充颜色 */ 
+                    0, 0,                           /* 左上角坐标 (x, y) */
+                    1024, 143,                      /* 矩形宽度和高度 */
+                    COLOR_WHITE                     /* 填充颜色 */ 
                 );
-                /* 账号输入文本框 */ 
                 lcd_render_text_with_box(
-                    user_info.account_number_buf,      /* 文本内容 */
-                    70, 51,                /* 起始坐标 (x, y) */
-                    COLOR_BLACK,             /* 文本颜色 */ 
-                    COLOR_WHITE,             /* 文本框背景颜色 */ 
-                    0,                       /* 文本与文本框边缘的间距 */ 
-                    BOX_STYLE_RECTANGLE,     /* 矩形样式 */ 
-                    0,                       /* 矩形样式不需要半径 */
-                    60,                      /* 字体大小 */
-                    0,                     /* 文本框宽度 */
-                    0                       /* 文本框高度 */
+                    user_info.account_number_buf,   /* 文本内容 */
+                    70, 51,                         /* 起始坐标 (x, y) */
+                    COLOR_BLACK,                    /* 文本颜色 */ 
+                    COLOR_WHITE,                    /* 文本框背景颜色 */ 
+                    0,                              /* 文本与文本框边缘的间距 */ 
+                    BOX_STYLE_RECTANGLE,            /* 矩形样式 */ 
+                    0,                              /* 矩形样式不需要半径 */
+                    60,                             /* 字体大小 */
+                    0,                              /* 文本框宽度 */
+                    0                               /* 文本框高度 */
                 );        
                 /* 确认按钮 */
                 lcd_render_text_with_box(
-                    "确认",      /* 文本内容 */
-                    800, 51,                /* 起始坐标 (x, y) */
-                    COLOR_WHITE,             /* 文本颜色 */ 
-                    COLOR_LIGHTGRAY,             /* 文本框背景颜色 */ 
-                    0,                       /* 文本与文本框边缘的间距 */ 
-                    BOX_STYLE_ROUNDED,     /* 矩形样式 */ 
-                    15,                       /* 矩形样式不需要半径 */
-                    60,                      /* 字体大小 */
-                    0,                       /* 文本框宽度 */
-                    0                        /* 文本框高度 */
+                    "确认",                          /* 文本内容 */
+                    800, 51,                        /* 起始坐标 (x, y) */
+                    COLOR_WHITE,                    /* 文本颜色 */ 
+                    COLOR_LIGHTGRAY,                /* 文本框背景颜色 */ 
+                    0,                              /* 文本与文本框边缘的间距 */ 
+                    BOX_STYLE_ROUNDED,              /* 圆角矩形样式 */ 
+                    15,                             /* 圆角矩形半径 */
+                    60,                             /* 字体大小 */
+                    0,                              /* 文本框宽度 */
+                    0                               /* 文本框高度 */
                 );
             }
         }
@@ -1752,60 +1823,59 @@ void register_password_box()
 {
     /* 初始化字库 */
     if (lcd_init("/dev/fb0", "simkai.ttf") != 0) {
-        printf("初始化失败。\n");
+        printf("Font library initialization failed.\n");
         return;
     }
 
-    /* 置顶密码输入框，以解决闪烁问题 */
-    show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
-    /* 绘制密码输入文本框背景 */
+    /* 加载背景图层 */
+    show_bmp_to_lcd("login_initialization.bmp", 0, 0, 1024, 600);    
+    /* 渲染密码文本框背景 */
     lcd_draw_filled_rectangle(
-        0, 0,               /* 左上角坐标 (x, y) */
-        1024, 143,          /* 矩形宽度和高度 */
-        COLOR_WHITE         /* 填充颜色 */ 
+        0, 0,                           /* 左上角坐标 (x, y) */
+        1024, 143,                      /* 矩形宽度和高度 */
+        COLOR_WHITE                     /* 填充颜色 */ 
     );
-    /* 绘制密码输入文本框 */
     lcd_render_text_with_box(
-        user_info.password_number_buf,      /* 文本内容 */
-        70, 51,                /* 起始坐标 (x, y) */
-        COLOR_BLACK,             /* 文本颜色 */ 
-        COLOR_WHITE,             /* 文本框背景颜色 */ 
-        0,                       /* 文本与文本框边缘的间距 */ 
-        BOX_STYLE_RECTANGLE,     /* 矩形样式 */ 
-        0,                       /* 矩形样式不需要半径 */
-        60,                      /* 字体大小 */
-        0,                     /* 文本框宽度 */
-        0                       /* 文本框高度 */
+        user_info.password_number_buf,  /* 文本内容 */
+        70, 51,                         /* 起始坐标 (x, y) */
+        COLOR_BLACK,                    /* 文本颜色 */ 
+        COLOR_WHITE,                    /* 文本框背景颜色 */ 
+        0,                              /* 文本与文本框边缘的间距 */ 
+        BOX_STYLE_RECTANGLE,            /* 矩形样式 */ 
+        0,                              /* 矩形样式不需要半径 */
+        60,                             /* 字体大小 */
+        0,                              /* 文本框宽度 */
+        0                               /* 文本框高度 */
     );
-
     /* 绘制确认按钮 */
     lcd_render_text_with_box(
-        "确认",      /* 文本内容 */
-        800, 51,                /* 起始坐标 (x, y) */
-        COLOR_WHITE,             /* 文本颜色 */ 
-        COLOR_LIGHTGRAY,             /* 文本框背景颜色 */ 
-        0,                       /* 文本与文本框边缘的间距 */ 
-        BOX_STYLE_ROUNDED,     /* 矩形样式 */ 
-        15,                       /* 矩形样式不需要半径 */
-        60,                      /* 字体大小 */
-        0,                       /* 文本框宽度 */
-        0                        /* 文本框高度 */
+        "确认",                         /* 文本内容 */
+        800, 51,                        /* 起始坐标 (x, y) */
+        COLOR_WHITE,                    /* 文本颜色 */ 
+        COLOR_LIGHTGRAY,                /* 文本框背景颜色 */ 
+        0,                              /* 文本与文本框边缘的间距 */ 
+        BOX_STYLE_ROUNDED,              /* 圆角矩形样式 */ 
+        15,                             /* 圆角矩形半径 */
+        60,                             /* 字体大小 */
+        0,                              /* 文本框宽度 */
+        0                               /* 文本框高度 */
     );
-    keyboard();    /* 加载键盘 */
+    /* 加载键盘 */
+    keyboard();    
 
-    // 打开触摸屏文件
+    /* 打开触摸屏文件 */ 
     int input_fd = open("/dev/input/event1", O_RDWR);
     if (input_fd == -1) {
         perror("Failed to open touchscreen device");
         return;
     }
-
     struct input_event input_buf;
 
     while (1) {
-        int input_changed = 0;  // 标记输入是否有变化
+        /* 标记输入是否有变化 */ 
+        int input_changed = 0;  
 
-        // 读取触摸屏数据
+        /* 读取触摸屏数据 */ 
         read(input_fd, &input_buf, sizeof(input_buf));
         if (input_buf.type == EV_ABS && input_buf.code == ABS_X) {
             input_x = input_buf.value;
@@ -1814,134 +1884,138 @@ void register_password_box()
             input_y = input_buf.value;
         }
         if (input_buf.type == EV_KEY && input_buf.code == BTN_TOUCH && input_buf.value == 0) {
-            // 判断是否点击了确认按钮
             if ((input_x >= 800 && input_x <= 900 && input_y >= 51 && input_y <= 111) || 
                 (input_x >= 876 && input_x <= 1024 && input_y >= 400 && input_y <= 600)) {  /* 确认按钮和确认键 */
-                /* 处理确认按钮点击事件 */ 
+                /* 点击到确认按钮 */ 
+
+                /* 处理账号输入 */
                 if (strlen(user_info.account_number_buf) == 0) {
                     if (strlen(user_info.password_number_buf) >= 8 && strlen(user_info.password_number_buf) <= 12) {
-                        /* 仅当密码符合条件时才显示图层 */
-                        show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
-                        /* 账号背景文本框 */
+                        /* 加载背景图层 */
+                        show_bmp_to_lcd("login_initialization.bmp", 0, 0, 1024, 600);    
+                        /* 渲染账号背景文本框 */
                         lcd_draw_filled_rectangle(
-                            104, 248,       /* 左上角坐标 (x, y) */
-                            386, 50,        /* 矩形宽度和高度 */
-                            COLOR_WHITE     /* 填充颜色 */
+                            104, 248,               /* 左上角坐标 (x, y) */
+                            386, 50,                /* 矩形宽度和高度 */
+                            COLOR_WHITE             /* 填充颜色 */
                         );
                         lcd_render_text(
-                            "请输入要注册的账号",                       /* 文本内容 */
-                            104, 260,                           /* 起始坐标 (x, y) */
-                            COLOR_LIGHTGRAY,                    /* 文本颜色 */
-                            25                                  /* 字体大小 */
+                            "请输入要注册的账号",     /* 文本内容 */
+                            104, 260,               /* 起始坐标 (x, y) */
+                            COLOR_LIGHTGRAY,        /* 文本颜色 */
+                            25                      /* 字体大小 */
                         );    
                     } else {
                         /* 密码不符合条件，屏幕开始提示，不显示图层 */
-                        /* 账号背景文本框 */
+                        /* 渲染账号背景文本框 */
                         lcd_draw_filled_rectangle(
-                            0, 0,       /* 左上角坐标 (x, y) */
-                            1, 1,        /* 矩形宽度和高度 */
-                            COLOR_WHITE     /* 填充颜色 */
+                            0, 0,                   /* 左上角坐标 (x, y) */
+                            1, 1,                   /* 矩形宽度和高度 */
+                            COLOR_WHITE             /* 填充颜色 */
                         );
                     }
                 } else {
                     if (strlen(user_info.password_number_buf) >= 8 && strlen(user_info.password_number_buf) <= 12) {
-                        /* 仅当密码符合条件时才显示图层 */
-                        show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
-                        /* 账号背景文本框 */
+                        /* 加载背景图层 */
+                        show_bmp_to_lcd("login_initialization.bmp", 0, 0, 1024, 600);    
+                        /* 渲染账号背景文本框 */
                         lcd_draw_filled_rectangle(
-                            104, 248,       /* 左上角坐标 (x, y) */
-                            386, 50,        /* 矩形宽度和高度 */
-                            COLOR_WHITE     /* 填充颜色 */
+                            104, 248,                       /* 左上角坐标 (x, y) */
+                            386, 50,                        /* 矩形宽度和高度 */
+                            COLOR_WHITE                     /* 填充颜色 */
                         );
                         /* 账号输入文本框 */ 
                         lcd_render_text_with_box(
-                            user_info.account_number_buf,      /* 文本内容 */
-                            104, 248,                /* 起始坐标 (x, y) */
-                            COLOR_BLACK,             /* 文本颜色 */ 
-                            COLOR_WHITE,             /* 文本框背景颜色 */ 
-                            0,                       /* 文本与文本框边缘的间距 */ 
-                            BOX_STYLE_RECTANGLE,     /* 矩形样式 */ 
-                            0,                       /* 矩形样式不需要半径 */
-                            50,                      /* 字体大小 */
-                            386,                     /* 文本框宽度 */
-                            50                       /* 文本框高度 */
+                            user_info.account_number_buf,   /* 文本内容 */
+                            104, 248,                       /* 起始坐标 (x, y) */
+                            COLOR_BLACK,                    /* 文本颜色 */ 
+                            COLOR_WHITE,                    /* 文本框背景颜色 */ 
+                            0,                              /* 文本与文本框边缘的间距 */ 
+                            BOX_STYLE_RECTANGLE,            /* 矩形样式 */ 
+                            0,                              /* 矩形样式不需要半径 */
+                            50,                             /* 字体大小 */
+                            386,                            /* 文本框宽度 */
+                            50                              /* 文本框高度 */
                         );  
                     } else {
                         /* 密码不符合条件，屏幕提示，不显示图层 */
-                        //show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);
+                        //show_bmp_to_lcd("login_initialization.bmp", 0, 0, 1024, 600);
                         /* 账号背景文本框 */
                         lcd_draw_filled_rectangle(
-                            0, 0,       /* 左上角坐标 (x, y) */
-                            1, 1,        /* 矩形宽度和高度 */
-                            COLOR_WHITE     /* 填充颜色 */
+                            0, 0,                   /* 左上角坐标 (x, y) */
+                            1, 1,                   /* 矩形宽度和高度 */
+                            COLOR_WHITE             /* 填充颜色 */
                         );
                     }
                 }
 
                 /* 显示或隐藏密码开关 */
                 int show_hide_password_flags = 0;
-                
                 /* 空密码时 */
                 if (strlen(user_info.password_number_buf) == 0) {
-                    show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
+                    /* 加载背景图层 */
+                    show_bmp_to_lcd("login_initialization.bmp", 0, 0, 1024, 600);    
                     /* 密码背景文本框 */
                     lcd_draw_filled_rectangle(
-                        104, 310,       /* 左上角坐标 (x, y) */
-                        386, 50,        /* 矩形宽度和高度 */
-                        COLOR_WHITE     /* 填充颜色 */
+                        104, 310,                   /* 左上角坐标 (x, y) */
+                        386, 50,                    /* 矩形宽度和高度 */
+                        COLOR_WHITE                 /* 填充颜色 */
                     );
                     lcd_render_text(
-                        "请输入不少于8位数的密码",            /* 文本内容 */
-                        104, 323,               /* 起始坐标 (x, y) */
-                        COLOR_LIGHTGRAY,        /* 文本颜色 */
-                        25                      /* 字体大小 */
+                        "请输入不少于8位数的密码",    /* 文本内容 */
+                        104, 323,                   /* 起始坐标 (x, y) */
+                        COLOR_LIGHTGRAY,            /* 文本颜色 */
+                        25                          /* 字体大小 */
                     );
                     /* 单独账号渲染,防止界面紊乱 */
                     if (strlen(user_info.account_number_buf) == 0) {
                         /* 账号背景文本框 */
                         lcd_draw_filled_rectangle(
-                            104, 248,       /* 左上角坐标 (x, y) */
-                            386, 50,        /* 矩形宽度和高度 */
-                            COLOR_WHITE     /* 填充颜色 */
+                            104, 248,               /* 左上角坐标 (x, y) */
+                            386, 50,                /* 矩形宽度和高度 */
+                            COLOR_WHITE             /* 填充颜色 */
                         );
                         lcd_render_text(
-                            "请输入要注册的账号",                       /* 文本内容 */
-                            104, 260,                           /* 起始坐标 (x, y) */
-                            COLOR_LIGHTGRAY,                    /* 文本颜色 */
-                            25                                  /* 字体大小 */
+                            "请输入要注册的账号",     /* 文本内容 */
+                            104, 260,               /* 起始坐标 (x, y) */
+                            COLOR_LIGHTGRAY,        /* 文本颜色 */
+                            25                      /* 字体大小 */
                         );
                     }
                     
+                    /* 默认隐藏密码 */
                     show_bmp_to_lcd("hide_password.bmp", 448, 315, 40, 40);
                     while (2) {
                         ts_fun();
                         if (input_x >= 450 && input_x <= 495 && input_y >= 322 && input_y <= 360) {
-                            /* 切换标志变量 */ 
+                            /* 切换显示隐藏密码开关 */ 
                             show_hide_password_flags = !show_hide_password_flags;
                             if (show_hide_password_flags) {
+                                /* 显示密码 */
                                 lcd_draw_filled_rectangle(
-                                    104, 310,       /* 左上角坐标 (x, y) */
-                                    386, 50,        /* 矩形宽度和高度 */
-                                    COLOR_WHITE     /* 填充颜色 */
+                                    104, 310,                   /* 左上角坐标 (x, y) */
+                                    386, 50,                    /* 矩形宽度和高度 */
+                                    COLOR_WHITE                 /* 填充颜色 */
                                 );
                                 lcd_render_text(
-                                    "请输入不少于8位数的密码",            /* 文本内容 */
-                                    104, 323,               /* 起始坐标 (x, y) */
-                                    COLOR_LIGHTGRAY,        /* 文本颜色 */
-                                    25                      /* 字体大小 */
+                                    "请输入不少于8位数的密码",    /* 文本内容 */
+                                    104, 323,                   /* 起始坐标 (x, y) */
+                                    COLOR_LIGHTGRAY,            /* 文本颜色 */
+                                    25                          /* 字体大小 */
                                 );
                                 show_bmp_to_lcd("show_password.bmp", 448, 315, 40, 40);
                             } else {
+                                /* 隐藏密码 */
                                 lcd_draw_filled_rectangle(
-                                    104, 310,       /* 左上角坐标 (x, y) */
-                                    386, 50,        /* 矩形宽度和高度 */
-                                    COLOR_WHITE     /* 填充颜色 */
+                                    104, 310,                   /* 左上角坐标 (x, y) */
+                                    386, 50,                    /* 矩形宽度和高度 */
+                                    COLOR_WHITE                 /* 填充颜色 */
                                 );
                                 lcd_render_text(
-                                    "请输入不少于8位数的密码",            /* 文本内容 */
-                                    104, 323,               /* 起始坐标 (x, y) */
-                                    COLOR_LIGHTGRAY,        /* 文本颜色 */
-                                    25                      /* 字体大小 */
+                                    "请输入不少于8位数的密码",    /* 文本内容 */
+                                    104, 323,                   /* 起始坐标 (x, y) */
+                                    COLOR_LIGHTGRAY,            /* 文本颜色 */
+                                    25                          /* 字体大小 */
                                 );
                                 show_bmp_to_lcd("hide_password.bmp", 448, 315, 40, 40);
                             }
@@ -1952,18 +2026,19 @@ void register_password_box()
                             register_password_box();
                             break;
                         } else if (input_x >= 250 && input_x <= 361 && input_y >= 424 && input_y <= 484) {
-                            register_allow_flags = 0; /* 空账号与密码强制不允许注册 */
+                            /* 空账号与密码强制不允许注册 */
+                            register_allow_flags = 0; 
                             register_judgment();
                             return;  /* 强行退出函数，避免死循环 */  
                         } else if (input_x >= 104 && input_x <= 248 && input_y >= 400 && input_y <= 500) {
                             lcd_render_text_with_box(
-                                "当前在注册页面，禁止登录！",          /* 文本内容 */
-                                350, 400,                       /* 起始坐标 (x, y) */
+                                "当前在注册页面，禁止登录！",     /* 文本内容 */
+                                340, 400,                       /* 起始坐标 (x, y) */
                                 COLOR_WHITE,                    /* 文本颜色 */
                                 COLOR_LIGHTGRAY,                /* 文本框背景颜色 */
                                 10,                             /* 文本与文本框边缘的间距 */
-                                BOX_STYLE_ROUNDED,              /* 圆角样式 */
-                                15,                             /* 圆角半径 */
+                                BOX_STYLE_ROUNDED,              /* 圆角矩形样式 */
+                                15,                             /* 圆角矩形半径 */
                                 30,                             /* 字体大小 */
                                 0,                              /* 文本框宽度 */
                                 0                               /* 文本框高度 */
@@ -1974,15 +2049,13 @@ void register_password_box()
                             memset(user_info.hide_password_number_buf, 0, sizeof(user_info.hide_password_number_buf));
                             memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
                             login_boot();
-                            return;  /* 强行退出函数，避免死循环 */
+                            return;
                         }
                     }
                     break;
                 }
-
                 /* 非空密码时 密码位数：8-12 */
                 if (strlen(user_info.password_number_buf) >= 8 && strlen(user_info.password_number_buf) <= 12) {
-                    //show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
                     /* 密码背景文本框 */
                     lcd_draw_filled_rectangle(
                         104, 310,       /* 左上角坐标 (x, y) */
@@ -1996,63 +2069,63 @@ void register_password_box()
                     );
                     /* 密码输入文本框 */
                     lcd_render_text_with_box(
-                        user_info.hide_password_number_buf,      /* 文本内容 */
-                        104, 310,                /* 起始坐标 (x, y) */
-                        COLOR_BLACK,             /* 文本颜色 */  
-                        COLOR_WHITE,             /* 文本框背景颜色 */
-                        0,                       /* 文本与文本框边缘的间距 */
-                        BOX_STYLE_RECTANGLE,     /* 矩形样式 */
-                        0,                       /* 矩形样式不需要半径 */
-                        50,                      /* 字体大小 */
-                        386,                       /* 文本框宽度 */
-                        50                        /* 文本框高度 */
+                        user_info.hide_password_number_buf,     /* 文本内容 */
+                        104, 310,                               /* 起始坐标 (x, y) */
+                        COLOR_BLACK,                            /* 文本颜色 */  
+                        COLOR_WHITE,                            /* 文本框背景颜色 */
+                        0,                                      /* 文本与文本框边缘的间距 */
+                        BOX_STYLE_RECTANGLE,                    /* 矩形样式 */
+                        0,                                      /* 矩形样式不需要半径 */
+                        50,                                     /* 字体大小 */
+                        386,                                    /* 文本框宽度 */
+                        50                                      /* 文本框高度 */
                     );
                     show_bmp_to_lcd("hide_password.bmp", 448, 315, 40, 40);
                     while (3) {
                         ts_fun();
                         if (input_x >= 450 && input_x <= 495 && input_y >= 322 && input_y <= 360) {
-                            /* 切换标志变量 */ 
+                            /* 切换显示隐藏密码开关 */ 
                             show_hide_password_flags = !show_hide_password_flags;
                             if (show_hide_password_flags) {
                                 /* 显示密码 */
                                 lcd_draw_filled_rectangle(
-                                    104, 310,       /* 左上角坐标 (x, y) */
-                                    386, 50,        /* 矩形宽度和高度 */
-                                    COLOR_WHITE     /* 填充颜色 */
+                                    104, 310,                       /* 左上角坐标 (x, y) */
+                                    386, 50,                        /* 矩形宽度和高度 */
+                                    COLOR_WHITE                     /* 填充颜色 */
                                 );
                                 /* 密码输入文本框 */
                                 lcd_render_text_with_box(
-                                    user_info.password_number_buf,      /* 文本内容 */
-                                    104, 310,                /* 起始坐标 (x, y) */
-                                    COLOR_BLACK,             /* 文本颜色 */  
-                                    COLOR_WHITE,             /* 文本框背景颜色 */
-                                    0,                       /* 文本与文本框边缘的间距 */
-                                    BOX_STYLE_RECTANGLE,     /* 矩形样式 */
-                                    0,                       /* 矩形样式不需要半径 */
-                                    50,                      /* 字体大小 */
-                                    386,                       /* 文本框宽度 */
-                                    50                        /* 文本框高度 */
+                                    user_info.password_number_buf,  /* 文本内容 */
+                                    104, 310,                       /* 起始坐标 (x, y) */
+                                    COLOR_BLACK,                    /* 文本颜色 */  
+                                    COLOR_WHITE,                    /* 文本框背景颜色 */
+                                    0,                              /* 文本与文本框边缘的间距 */
+                                    BOX_STYLE_RECTANGLE,            /* 矩形样式 */
+                                    0,                              /* 矩形样式不需要半径 */
+                                    50,                             /* 字体大小 */
+                                    386,                            /* 文本框宽度 */
+                                    50                              /* 文本框高度 */
                                 );
                                 show_bmp_to_lcd("show_password.bmp", 448, 315, 40, 40);
                             } else {
                                 /* 隐藏密码 */
                                 lcd_draw_filled_rectangle(
-                                    104, 310,       /* 左上角坐标 (x, y) */
-                                    386, 50,        /* 矩形宽度和高度 */
-                                    COLOR_WHITE     /* 填充颜色 */
+                                    104, 310,                           /* 左上角坐标 (x, y) */
+                                    386, 50,                            /* 矩形宽度和高度 */
+                                    COLOR_WHITE                         /* 填充颜色 */
                                 );
                                 /* 密码输入文本框 */
                                 lcd_render_text_with_box(
-                                    user_info.hide_password_number_buf,      /* 文本内容 */
-                                    104, 310,                /* 起始坐标 (x, y) */
-                                    COLOR_BLACK,             /* 文本颜色 */  
-                                    COLOR_WHITE,             /* 文本框背景颜色 */
-                                    0,                       /* 文本与文本框边缘的间距 */
-                                    BOX_STYLE_RECTANGLE,     /* 矩形样式 */
-                                    0,                       /* 矩形样式不需要半径 */
-                                    50,                      /* 字体大小 */
-                                    386,                       /* 文本框宽度 */
-                                    50                        /* 文本框高度 */
+                                    user_info.hide_password_number_buf, /* 文本内容 */
+                                    104, 310,                           /* 起始坐标 (x, y) */
+                                    COLOR_BLACK,                        /* 文本颜色 */  
+                                    COLOR_WHITE,                        /* 文本框背景颜色 */
+                                    0,                                  /* 文本与文本框边缘的间距 */
+                                    BOX_STYLE_RECTANGLE,                /* 矩形样式 */
+                                    0,                                  /* 矩形样式不需要半径 */
+                                    50,                                 /* 字体大小 */
+                                    386,                                /* 文本框宽度 */
+                                    50                                  /* 文本框高度 */
                                 );
                                 show_bmp_to_lcd("hide_password.bmp", 448, 315, 40, 40);
                             }
@@ -2063,18 +2136,19 @@ void register_password_box()
                             register_password_box();
                             break;
                         } else if (input_x >= 250 && input_x <= 361 && input_y >= 424 && input_y <= 484) {
-                            register_allow_flags = 1; /* 满足输入条件，允许注册 */
+                            /* 满足输入条件，允许注册 */
+                            register_allow_flags = 1; 
                             register_judgment();
-                            return;  /* 强行退出函数，避免死循环 */  
+                            return;
                         } else if (input_x >= 104 && input_x <= 248 && input_y >= 400 && input_y <= 500) {
                             lcd_render_text_with_box(
-                                "当前在注册页面，禁止登录！",          /* 文本内容 */
-                                350, 400,                       /* 起始坐标 (x, y) */
+                                "当前在注册页面，禁止登录！",     /* 文本内容 */
+                                340, 400,                       /* 起始坐标 (x, y) */
                                 COLOR_WHITE,                    /* 文本颜色 */
                                 COLOR_LIGHTGRAY,                /* 文本框背景颜色 */
                                 10,                             /* 文本与文本框边缘的间距 */
-                                BOX_STYLE_ROUNDED,              /* 圆角样式 */
-                                15,                             /* 圆角半径 */
+                                BOX_STYLE_ROUNDED,              /* 圆角矩形样式 */
+                                15,                             /* 圆角矩形半径 */
                                 30,                             /* 字体大小 */
                                 0,                              /* 文本框宽度 */
                                 0                               /* 文本框高度 */
@@ -2085,22 +2159,22 @@ void register_password_box()
                             memset(user_info.hide_password_number_buf, 0, sizeof(user_info.hide_password_number_buf));
                             memset(user_info.password_number_buf, 0, sizeof(user_info.password_number_buf));
                             login_boot();
-                            return;  /* 强行退出函数，避免死循环 */
+                            return;
                         }
                     }
                 } else {    
                     /* 密码位数小于8或大于12 */
                     lcd_render_text_with_box(
-                        "密码不符合要求，请重新输入8-12位密码！",          /* 文本内容 */
-                        233, 400,                       /* 起始坐标 (x, y) */
-                        COLOR_WHITE,                    /* 文本颜色 */
-                        COLOR_LIGHTGRAY,                /* 文本框背景颜色 */
-                        10,                             /* 文本与文本框边缘的间距 */
-                        BOX_STYLE_ROUNDED,              /* 圆角样式 */
-                        15,                             /* 圆角半径 */
-                        30,                             /* 字体大小 */
-                        0,                              /* 文本框宽度 */
-                        0                               /* 文本框高度 */
+                        "密码不符合要求，请重新输入8-12位密码！",  /* 文本内容 */
+                        233, 400,                               /* 起始坐标 (x, y) */
+                        COLOR_WHITE,                            /* 文本颜色 */
+                        COLOR_LIGHTGRAY,                        /* 文本框背景颜色 */
+                        10,                                     /* 文本与文本框边缘的间距 */
+                        BOX_STYLE_ROUNDED,                      /* 圆角矩形样式 */
+                        15,                                     /* 圆角矩形半径 */
+                        30,                                     /* 字体大小 */
+                        0,                                      /* 文本框宽度 */
+                        0                                       /* 文本框高度 */
                     );
                     sleep(3);
                     register_allow_flags = 0;
@@ -2112,143 +2186,144 @@ void register_password_box()
                 }
                 break;
             }
-            // 处理键盘点击事件
-            if (input_x >= 224 && input_x <= 810 && input_y >= 503 && input_y <= 600) { //空格键
+
+            /* 处理键盘点击事件 */ 
+            if (input_x >= 224 && input_x <= 810 && input_y >= 503 && input_y <= 600) {
                 strcat(user_info.password_number_buf, " ");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 0 && input_x <= 100 && input_y >= 198 && input_y <= 254) { //Q键
+            if (input_x >= 0 && input_x <= 100 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.password_number_buf, "Q");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 144 && input_x <= 210 && input_y >= 198 && input_y <= 254) { //W键
+            if (input_x >= 144 && input_x <= 210 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.password_number_buf, "W");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 247 && input_x <= 301 && input_y >= 198 && input_y <= 254) { //E键
+            if (input_x >= 247 && input_x <= 301 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.password_number_buf, "E");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 331 && input_x <= 400 && input_y >= 198 && input_y <= 254) { //R键
+            if (input_x >= 331 && input_x <= 400 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.password_number_buf, "R");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 436 && input_x <= 495 && input_y >= 198 && input_y <= 254) { //T键
+            if (input_x >= 436 && input_x <= 495 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.password_number_buf, "T");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 544 && input_x <= 600 && input_y >= 198 && input_y <= 254) { //Y键
+            if (input_x >= 544 && input_x <= 600 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.password_number_buf, "Y");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 640 && input_x <= 694 && input_y >= 198 && input_y <= 254) { //U键
+            if (input_x >= 640 && input_x <= 694 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.password_number_buf, "U");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 740 && input_x <= 797 && input_y >= 198 && input_y <= 254) { //I键
+            if (input_x >= 740 && input_x <= 797 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.password_number_buf, "I");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 834 && input_x <= 900 && input_y >= 198 && input_y <= 254) { //O键
+            if (input_x >= 834 && input_x <= 900 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.password_number_buf, "O");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 927 && input_x <= 1024 && input_y >= 198 && input_y <= 254) { //P键
+            if (input_x >= 927 && input_x <= 1024 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.password_number_buf, "P");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 104 && input_x <= 150 && input_y >= 297 && input_y <= 353) { //A键
+            if (input_x >= 104 && input_x <= 150 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.password_number_buf, "A");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 194 && input_x <= 264 && input_y >= 297 && input_y <= 353) { //S键
+            if (input_x >= 194 && input_x <= 264 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.password_number_buf, "S");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 291 && input_x <= 350 && input_y >= 297 && input_y <= 353) { //D键
+            if (input_x >= 291 && input_x <= 350 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.password_number_buf, "D");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 385 && input_x <= 447 && input_y >= 297 && input_y <= 353) { //F键
+            if (input_x >= 385 && input_x <= 447 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.password_number_buf, "F");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 489 && input_x <= 544 && input_y >= 297 && input_y <= 353) { //G键
+            if (input_x >= 489 && input_x <= 544 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.password_number_buf, "G");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 589 && input_x <= 647 && input_y >= 297 && input_y <= 353) { //H键
+            if (input_x >= 589 && input_x <= 647 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.password_number_buf, "H");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 697 && input_x <= 742 && input_y >= 297 && input_y <= 353) { //J键
+            if (input_x >= 697 && input_x <= 742 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.password_number_buf, "J");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 789 && input_x <= 847 && input_y >= 297 && input_y <= 353) { //K键
+            if (input_x >= 789 && input_x <= 847 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.password_number_buf, "K");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 894 && input_x <= 938 && input_y >= 297 && input_y <= 353) { //L键
+            if (input_x >= 894 && input_x <= 938 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.password_number_buf, "L");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 155 && input_x <= 205 && input_y >= 400 && input_y <= 458) { //Z键
+            if (input_x >= 155 && input_x <= 205 && input_y >= 400 && input_y <= 458) {
                 strcat(user_info.password_number_buf, "Z");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 249 && input_x <= 297 && input_y >= 400 && input_y <= 458) { //X键
+            if (input_x >= 249 && input_x <= 297 && input_y >= 400 && input_y <= 458) {
                 strcat(user_info.password_number_buf, "X");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 342 && input_x <= 400 && input_y >= 400 && input_y <= 458) { //C键
+            if (input_x >= 342 && input_x <= 400 && input_y >= 400 && input_y <= 458) {
                 strcat(user_info.password_number_buf, "C");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 445 && input_x <= 495 && input_y >= 400 && input_y <= 458) { //V键
+            if (input_x >= 445 && input_x <= 495 && input_y >= 400 && input_y <= 458) {
                 strcat(user_info.password_number_buf, "V");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 541 && input_x <= 589 && input_y >= 400 && input_y <= 458) { //B键
+            if (input_x >= 541 && input_x <= 589 && input_y >= 400 && input_y <= 458) {
                 strcat(user_info.password_number_buf, "B");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 641 && input_x <= 692 && input_y >= 400 && input_y <= 458) { //N键
+            if (input_x >= 641 && input_x <= 692 && input_y >= 400 && input_y <= 458) {
                 strcat(user_info.password_number_buf, "N");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 739 && input_x <= 800 && input_y >= 400 && input_y <= 458) { //M键
+            if (input_x >= 739 && input_x <= 800 && input_y >= 400 && input_y <= 458) {
                 strcat(user_info.password_number_buf, "M");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 0 && input_x <= 120 && input_y >= 393 && input_y <= 600) { //删除键
+            if (input_x >= 0 && input_x <= 120 && input_y >= 393 && input_y <= 600) {
                 if (strlen(user_info.password_number_buf) > 0) {
                     user_info.password_number_buf[strlen(user_info.password_number_buf) - 1] = '\0';
                 }
@@ -2258,38 +2333,36 @@ void register_password_box()
                 input_changed = 1;  
             }
 
+            /* 输入标记有变化 */
             if (input_changed) {
-                // 绘制密码输入文本框背景
                 lcd_draw_filled_rectangle(
-                    0, 0,               /* 左上角坐标 (x, y) */
-                    1024, 143,          /* 矩形宽度和高度 */
-                    COLOR_WHITE         /* 填充颜色 */ 
+                    0, 0,                           /* 左上角坐标 (x, y) */
+                    1024, 143,                      /* 矩形宽度和高度 */
+                    COLOR_WHITE                     /* 填充颜色 */ 
                 );
-                /* 密码输入文本框 */ 
                 lcd_render_text_with_box(
-                    user_info.password_number_buf,      /* 文本内容 */
-                    70, 51,                /* 起始坐标 (x, y) */
-                    COLOR_BLACK,             /* 文本颜色 */ 
-                    COLOR_WHITE,             /* 文本框背景颜色 */ 
-                    0,                       /* 文本与文本框边缘的间距 */ 
-                    BOX_STYLE_RECTANGLE,     /* 矩形样式 */ 
-                    0,                       /* 矩形样式不需要半径 */
-                    60,                      /* 字体大小 */
-                    0,                     /* 文本框宽度 */
-                    0                       /* 文本框高度 */
+                    user_info.password_number_buf,  /* 文本内容 */
+                    70, 51,                         /* 起始坐标 (x, y) */
+                    COLOR_BLACK,                    /* 文本颜色 */ 
+                    COLOR_WHITE,                    /* 文本框背景颜色 */ 
+                    0,                              /* 文本与文本框边缘的间距 */ 
+                    BOX_STYLE_RECTANGLE,            /* 矩形样式 */ 
+                    0,                              /* 矩形样式不需要半径 */
+                    60,                             /* 字体大小 */
+                    0,                              /* 文本框宽度 */
+                    0                               /* 文本框高度 */
                 );        
-                /* 确认按钮 */
                 lcd_render_text_with_box(
-                    "确认",                 /* 文本内容 */
-                    800, 51,                /* 起始坐标 (x, y) */
-                    COLOR_WHITE,            /* 文本颜色 */ 
-                    COLOR_LIGHTGRAY,        /* 文本框背景颜色 */ 
-                    0,                      /* 文本与文本框边缘的间距 */ 
-                    BOX_STYLE_ROUNDED,      /* 矩形样式 */ 
-                    15,                     /* 矩形样式不需要半径 */
-                    60,                     /* 字体大小 */
-                    0,                      /* 文本框宽度 */
-                    0                       /* 文本框高度 */
+                    "确认",                         /* 文本内容 */
+                    800, 51,                        /* 起始坐标 (x, y) */
+                    COLOR_WHITE,                    /* 文本颜色 */ 
+                    COLOR_LIGHTGRAY,                /* 文本框背景颜色 */ 
+                    0,                              /* 文本与文本框边缘的间距 */ 
+                    BOX_STYLE_ROUNDED,              /* 圆角矩形样式 */ 
+                    15,                             /* 圆角矩形半径 */
+                    60,                             /* 字体大小 */
+                    0,                              /* 文本框宽度 */
+                    0                               /* 文本框高度 */
                 );
             }
         }
@@ -2304,48 +2377,48 @@ void find_account_account_box()
 {
     /* 初始化字库 */
     if (lcd_init("/dev/fb0", "simkai.ttf") != 0) {
-        printf("初始化失败。\n");
+        printf("Font library initialization failed.\n");
         return;
     }
 
-    /* 置顶账号输入框，以解决闪烁问题 */
-    show_bmp_to_lcd("find_account.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
-    /* 绘制账号输入文本框背景 */
+    /* 加载背景图层 */
+    show_bmp_to_lcd("find_account.bmp", 0, 0, 1024, 600);    
+    /* 渲染账号文本框背景 */
     lcd_draw_filled_rectangle(
-        0, 0,               /* 左上角坐标 (x, y) */
-        1024, 143,          /* 矩形宽度和高度 */
-        COLOR_WHITE         /* 填充颜色 */ 
+        0, 0,                           /* 左上角坐标 (x, y) */
+        1024, 143,                      /* 矩形宽度和高度 */
+        COLOR_WHITE                     /* 填充颜色 */ 
     );
     /* 绘制账号输入文本框 */
     lcd_render_text_with_box(
-        user_info.account_number_buf,      /* 文本内容 */
-        70, 51,                /* 起始坐标 (x, y) */
-        COLOR_BLACK,             /* 文本颜色 */ 
-        COLOR_WHITE,             /* 文本框背景颜色 */ 
-        0,                       /* 文本与文本框边缘的间距 */ 
-        BOX_STYLE_RECTANGLE,     /* 矩形样式 */ 
-        0,                       /* 矩形样式不需要半径 */
-        60,                      /* 字体大小 */
-        0,                     /* 文本框宽度 */
-        0                       /* 文本框高度 */
+        user_info.account_number_buf,   /* 文本内容 */
+        70, 51,                         /* 起始坐标 (x, y) */
+        COLOR_BLACK,                    /* 文本颜色 */ 
+        COLOR_WHITE,                    /* 文本框背景颜色 */ 
+        0,                              /* 文本与文本框边缘的间距 */ 
+        BOX_STYLE_RECTANGLE,            /* 矩形样式 */ 
+        0,                              /* 矩形样式不需要半径 */
+        60,                             /* 字体大小 */
+        0,                              /* 文本框宽度 */
+        0                               /* 文本框高度 */
     );
-
     /* 绘制确认按钮 */
     lcd_render_text_with_box(
-        "确认",      /* 文本内容 */
-        800, 51,                /* 起始坐标 (x, y) */
-        COLOR_WHITE,             /* 文本颜色 */ 
-        COLOR_LIGHTGRAY,             /* 文本框背景颜色 */ 
-        0,                       /* 文本与文本框边缘的间距 */ 
-        BOX_STYLE_ROUNDED,     /* 矩形样式 */ 
-        15,                       /* 矩形样式不需要半径 */
-        60,                      /* 字体大小 */
-        0,                       /* 文本框宽度 */
-        0                        /* 文本框高度 */
+        "确认",                         /* 文本内容 */
+        800, 51,                        /* 起始坐标 (x, y) */
+        COLOR_WHITE,                    /* 文本颜色 */ 
+        COLOR_LIGHTGRAY,                /* 文本框背景颜色 */ 
+        0,                              /* 文本与文本框边缘的间距 */ 
+        BOX_STYLE_ROUNDED,              /* 圆角矩形样式 */ 
+        15,                             /* 圆角矩形半径 */
+        60,                             /* 字体大小 */
+        0,                              /* 文本框宽度 */
+        0                               /* 文本框高度 */
     );
-    keyboard();    /* 加载键盘 */
+    /* 加载键盘 */
+    keyboard();    
 
-    // 打开触摸屏文件
+    /* 打开触摸屏文件 */ 
     int input_fd = open("/dev/input/event1", O_RDWR);
     if (input_fd == -1) {
         perror("Failed to open touchscreen device");
@@ -2355,9 +2428,10 @@ void find_account_account_box()
     struct input_event input_buf;
 
     while (1) {
-        int input_changed = 0;  // 标记输入是否有变化
+        /* 标记输入是否有变化 */ 
+        int input_changed = 0;  
 
-        // 读取触摸屏数据
+        /* 读取触摸屏数据 */ 
         read(input_fd, &input_buf, sizeof(input_buf));
         if (input_buf.type == EV_ABS && input_buf.code == ABS_X) {
             input_x = input_buf.value;
@@ -2366,39 +2440,42 @@ void find_account_account_box()
             input_y = input_buf.value;
         }
         if (input_buf.type == EV_KEY && input_buf.code == BTN_TOUCH && input_buf.value == 0) {
-            // 判断是否点击了确认按钮
             if ((input_x >= 800 && input_x <= 900 && input_y >= 51 && input_y <= 111) || 
-                (input_x >= 876 && input_x <= 1024 && input_y >= 400 && input_y <= 600)) {  /* 确认按钮和确认键 */
-                /* 处理确认按钮点击事件 */ 
+                (input_x >= 876 && input_x <= 1024 && input_y >= 400 && input_y <= 600)) {  
+                /* 确认按钮和确认键 */
+
+                /* 处理账号输入 */
                 if (strlen(user_info.account_number_buf) == 0) {
-                    show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
-                    /* 账号背景文本框 */
+                    /* 加载背景图层 */
+                    show_bmp_to_lcd("login_initialization.bmp", 0, 0, 1024, 600);    
+                    /* 渲染账号背景文本框 */
                     lcd_draw_filled_rectangle(
-                        104, 248,       /* 左上角坐标 (x, y) */
-                        386, 50,        /* 矩形宽度和高度 */
-                        COLOR_WHITE     /* 填充颜色 */
+                        104, 248,               /* 左上角坐标 (x, y) */
+                        386, 50,                /* 矩形宽度和高度 */
+                        COLOR_WHITE             /* 填充颜色 */
                     );
                     lcd_render_text(
-                        "请输入要找回的账号",                       /* 文本内容 */
-                        104, 260,                           /* 起始坐标 (x, y) */
-                        COLOR_LIGHTGRAY,                    /* 文本颜色 */
-                        25                                  /* 字体大小 */
+                        "请输入要找回的账号",     /* 文本内容 */
+                        104, 260,               /* 起始坐标 (x, y) */
+                        COLOR_LIGHTGRAY,        /* 文本颜色 */
+                        25                      /* 字体大小 */
                     );            
                 } else if (strlen(user_info.account_number_buf) <= 12) {
                     /* 账号不超过12位 */
-                    show_bmp_to_lcd("find_account.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
-                    /* 账号输入文本框 */ 
+                    /* 加载背景图层 */
+                    show_bmp_to_lcd("find_account.bmp", 0, 0, 1024, 600);    
+                    /* 渲染账号背景文本框 */ 
                     lcd_render_text_with_box(
-                        user_info.account_number_buf,      /* 文本内容 */
-                        104, 248,                /* 起始坐标 (x, y) */
-                        COLOR_BLACK,             /* 文本颜色 */ 
-                        COLOR_WHITE,             /* 文本框背景颜色 */ 
-                        0,                       /* 文本与文本框边缘的间距 */ 
-                        BOX_STYLE_RECTANGLE,     /* 矩形样式 */ 
-                        0,                       /* 矩形样式不需要半径 */
-                        50,                      /* 字体大小 */
-                        386,                     /* 文本框宽度 */
-                        50                       /* 文本框高度 */
+                        user_info.account_number_buf,       /* 文本内容 */
+                        104, 248,                           /* 起始坐标 (x, y) */
+                        COLOR_BLACK,                        /* 文本颜色 */ 
+                        COLOR_WHITE,                        /* 文本框背景颜色 */ 
+                        0,                                  /* 文本与文本框边缘的间距 */ 
+                        BOX_STYLE_RECTANGLE,                /* 矩形样式 */ 
+                        0,                                  /* 矩形样式不需要半径 */
+                        50,                                 /* 字体大小 */
+                        386,                                /* 文本框宽度 */
+                        50                                  /* 文本框高度 */
                     );  
                 } else {
                     lcd_render_text_with_box(
@@ -2419,53 +2496,55 @@ void find_account_account_box()
                     return;
                 }
 
+                /* 密码输入处理 */
                 /* 显示或隐藏密码开关 */
                 int show_hide_password_flags = 0;
-                /* 密码背景文本框 */
+                /* 渲染密码背景文本框 */
                 lcd_draw_filled_rectangle(
-                    104, 310,       /* 左上角坐标 (x, y) */
-                    386, 50,        /* 矩形宽度和高度 */
-                    COLOR_WHITE     /* 填充颜色 */
+                    104, 310,                       /* 左上角坐标 (x, y) */
+                    386, 50,                        /* 矩形宽度和高度 */
+                    COLOR_WHITE                     /* 填充颜色 */
                 );
-
                 /* 空密码时 */
                 if (strlen(user_info.password_number_buf) == 0) {
                     lcd_render_text(
-                        "请输入要修改的密码(8-12位)",            /* 文本内容 */
-                        104, 323,               /* 起始坐标 (x, y) */
-                        COLOR_LIGHTGRAY,        /* 文本颜色 */
-                        25                      /* 字体大小 */
+                        "请输入要修改的密码(8-12位)", /* 文本内容 */
+                        104, 323,                   /* 起始坐标 (x, y) */
+                        COLOR_LIGHTGRAY,            /* 文本颜色 */
+                        25                          /* 字体大小 */
                     );
                     show_bmp_to_lcd("hide_password.bmp", 448, 315, 40, 40);
                     while (3) {
                         ts_fun();
                         if (input_x >= 450 && input_x <= 495 && input_y >= 322 && input_y <= 360) {
-                            /* 切换标志变量 */ 
+                            /* 切换显示隐藏密码开关 */ 
                             show_hide_password_flags = !show_hide_password_flags;
                             if (show_hide_password_flags) {
+                                /* 显示密码 */
                                 lcd_draw_filled_rectangle(
-                                    104, 310,       /* 左上角坐标 (x, y) */
-                                    386, 50,        /* 矩形宽度和高度 */
-                                    COLOR_WHITE     /* 填充颜色 */
+                                    104, 310,                   /* 左上角坐标 (x, y) */
+                                    386, 50,                    /* 矩形宽度和高度 */
+                                    COLOR_WHITE                 /* 填充颜色 */
                                 );
                                 lcd_render_text(
-                                    "请输入要修改的密码(8-12位)",            /* 文本内容 */
-                                    104, 323,               /* 起始坐标 (x, y) */
-                                    COLOR_LIGHTGRAY,        /* 文本颜色 */
-                                    25                      /* 字体大小 */
+                                    "请输入要修改的密码(8-12位)", /* 文本内容 */
+                                    104, 323,                   /* 起始坐标 (x, y) */
+                                    COLOR_LIGHTGRAY,            /* 文本颜色 */
+                                    25                          /* 字体大小 */
                                 );
                                 show_bmp_to_lcd("show_password.bmp", 448, 315, 40, 40);
                             } else {
+                                /* 隐藏密码 */
                                 lcd_draw_filled_rectangle(
-                                    104, 310,       /* 左上角坐标 (x, y) */
-                                    386, 50,        /* 矩形宽度和高度 */
-                                    COLOR_WHITE     /* 填充颜色 */
+                                    104, 310,                   /* 左上角坐标 (x, y) */
+                                    386, 50,                    /* 矩形宽度和高度 */
+                                    COLOR_WHITE                 /* 填充颜色 */
                                 );
                                 lcd_render_text(
-                                    "请输入要修改的密码(8-12位)",            /* 文本内容 */
-                                    104, 323,               /* 起始坐标 (x, y) */
-                                    COLOR_LIGHTGRAY,        /* 文本颜色 */
-                                    25                      /* 字体大小 */
+                                    "请输入要修改的密码(8-12位)", /* 文本内容 */
+                                    104, 323,                   /* 起始坐标 (x, y) */
+                                    COLOR_LIGHTGRAY,            /* 文本颜色 */
+                                    25                          /* 字体大小 */
                                 );
                                 show_bmp_to_lcd("hide_password.bmp", 448, 315, 40, 40);
                             }
@@ -2476,79 +2555,80 @@ void find_account_account_box()
                             find_account_password_box();
                             return;
                         } else if (input_x >= 104 && input_x <= 248 && input_y >= 400 && input_y <= 500) {
+                            /* 满足所有输入条件，允许找回 */
+                            find_account_allow_flags = 1;    
                             find_account_judgment_1();
                             return;
                         }
                     }
                     break;
                 }
-
                 /* 非空密码时 */
                 if (strlen(user_info.password_number_buf) != 0) {
                     lcd_draw_filled_rectangle(
-                        104, 310,       /* 左上角坐标 (x, y) */
-                        386, 50,        /* 矩形宽度和高度 */
-                        COLOR_WHITE     /* 填充颜色 */
+                        104, 310,                           /* 左上角坐标 (x, y) */
+                        386, 50,                            /* 矩形宽度和高度 */
+                        COLOR_WHITE                         /* 填充颜色 */
                     );
                     /* 密码输入文本框 */
                     lcd_render_text_with_box(
-                        user_info.hide_password_number_buf,      /* 文本内容 */
-                        104, 310,                /* 起始坐标 (x, y) */
-                        COLOR_BLACK,             /* 文本颜色 */  
-                        COLOR_WHITE,             /* 文本框背景颜色 */
-                        0,                       /* 文本与文本框边缘的间距 */
-                        BOX_STYLE_RECTANGLE,     /* 矩形样式 */
-                        0,                       /* 矩形样式不需要半径 */
-                        50,                      /* 字体大小 */
-                        386,                       /* 文本框宽度 */
-                        50                        /* 文本框高度 */
+                        user_info.hide_password_number_buf, /* 文本内容 */
+                        104, 310,                           /* 起始坐标 (x, y) */
+                        COLOR_BLACK,                        /* 文本颜色 */  
+                        COLOR_WHITE,                        /* 文本框背景颜色 */
+                        0,                                  /* 文本与文本框边缘的间距 */
+                        BOX_STYLE_RECTANGLE,                /* 矩形样式 */
+                        0,                                  /* 矩形样式不需要半径 */
+                        50,                                 /* 字体大小 */
+                        386,                                /* 文本框宽度 */
+                        50                                  /* 文本框高度 */
                     );
                     show_bmp_to_lcd("hide_password.bmp", 448, 315, 40, 40);
                     while (4) {
                         ts_fun();
                         if (input_x >= 450 && input_x <= 495 && input_y >= 322 && input_y <= 360) {
-                            /* 切换标志变量 */ 
+                            /* 切换显示密码开关 */ 
                             show_hide_password_flags = !show_hide_password_flags;
                             if (show_hide_password_flags) {
                                 /* 显示密码 */
                                 lcd_draw_filled_rectangle(
-                                    104, 310,       /* 左上角坐标 (x, y) */
-                                    386, 50,        /* 矩形宽度和高度 */
-                                    COLOR_WHITE     /* 填充颜色 */
+                                    104, 310,               /* 左上角坐标 (x, y) */
+                                    386, 50,                /* 矩形宽度和高度 */
+                                    COLOR_WHITE             /* 填充颜色 */
                                 );
-                                /* 密码输入文本框 */
+                                /* 渲染密码背景文本框 */
                                 lcd_render_text_with_box(
-                                    user_info.password_number_buf,      /* 文本内容 */
-                                    104, 310,                /* 起始坐标 (x, y) */
-                                    COLOR_BLACK,             /* 文本颜色 */  
-                                    COLOR_WHITE,             /* 文本框背景颜色 */
-                                    0,                       /* 文本与文本框边缘的间距 */
-                                    BOX_STYLE_RECTANGLE,     /* 矩形样式 */
-                                    0,                       /* 矩形样式不需要半径 */
-                                    50,                      /* 字体大小 */
-                                    386,                       /* 文本框宽度 */
-                                    50                        /* 文本框高度 */
+                                    user_info.password_number_buf,  /* 文本内容 */
+                                    104, 310,                       /* 起始坐标 (x, y) */
+                                    COLOR_BLACK,                    /* 文本颜色 */  
+                                    COLOR_WHITE,                    /* 文本框背景颜色 */
+                                    0,                              /* 文本与文本框边缘的间距 */
+                                    BOX_STYLE_RECTANGLE,            /* 矩形样式 */
+                                    0,                              /* 矩形样式不需要半径 */
+                                    50,                             /* 字体大小 */
+                                    386,                            /* 文本框宽度 */
+                                    50                              /* 文本框高度 */
                                 );
                                 show_bmp_to_lcd("show_password.bmp", 448, 315, 40, 40);
                             } else {
                                 /* 隐藏密码 */
                                 lcd_draw_filled_rectangle(
-                                    104, 310,       /* 左上角坐标 (x, y) */
-                                    386, 50,        /* 矩形宽度和高度 */
-                                    COLOR_WHITE     /* 填充颜色 */
+                                    104, 310,                           /* 左上角坐标 (x, y) */
+                                    386, 50,                            /* 矩形宽度和高度 */
+                                    COLOR_WHITE                         /* 填充颜色 */
                                 );
-                                /* 密码输入文本框 */
+                                /* 渲染密码背景文本框 */
                                 lcd_render_text_with_box(
-                                    user_info.hide_password_number_buf,      /* 文本内容 */
-                                    104, 310,                /* 起始坐标 (x, y) */
-                                    COLOR_BLACK,             /* 文本颜色 */  
-                                    COLOR_WHITE,             /* 文本框背景颜色 */
-                                    0,                       /* 文本与文本框边缘的间距 */
-                                    BOX_STYLE_RECTANGLE,     /* 矩形样式 */
-                                    0,                       /* 矩形样式不需要半径 */
-                                    50,                      /* 字体大小 */
-                                    386,                       /* 文本框宽度 */
-                                    50                        /* 文本框高度 */
+                                    user_info.hide_password_number_buf, /* 文本内容 */
+                                    104, 310,                           /* 起始坐标 (x, y) */
+                                    COLOR_BLACK,                        /* 文本颜色 */  
+                                    COLOR_WHITE,                        /* 文本框背景颜色 */
+                                    0,                                  /* 文本与文本框边缘的间距 */
+                                    BOX_STYLE_RECTANGLE,                /* 矩形样式 */
+                                    0,                                  /* 矩形样式不需要半径 */
+                                    50,                                 /* 字体大小 */
+                                    386,                                /* 文本框宽度 */
+                                    50                                  /* 文本框高度 */
                                 );
                                 show_bmp_to_lcd("hide_password.bmp", 448, 315, 40, 40);
                             }
@@ -2559,7 +2639,8 @@ void find_account_account_box()
                             find_account_password_box();
                             return;
                         } else if (input_x >= 104 && input_x <= 248 && input_y >= 400 && input_y <= 500) {
-                            find_account_allow_flags = 1;    /* 满足所有输入条件，允许找回 */
+                            /* 满足所有输入条件，允许找回 */
+                            find_account_allow_flags = 1;    
                             find_account_judgment_1();
                             return;
                         }
@@ -2567,154 +2648,153 @@ void find_account_account_box()
                 }
                 break;  
             }
-            // 处理键盘点击事件
-            if (input_x >= 224 && input_x <= 810 && input_y >= 503 && input_y <= 600) { //空格键
+
+            /* 处理键盘点击事件 */ 
+            if (input_x >= 224 && input_x <= 810 && input_y >= 503 && input_y <= 600) {
                 strcat(user_info.account_number_buf, " ");
                 input_changed = 1;  
             }
-            if (input_x >= 0 && input_x <= 100 && input_y >= 198 && input_y <= 254) { //Q键
+            if (input_x >= 0 && input_x <= 100 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.account_number_buf, "Q");
                 input_changed = 1;  
             }
-            if (input_x >= 144 && input_x <= 210 && input_y >= 198 && input_y <= 254) { //W键
+            if (input_x >= 144 && input_x <= 210 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.account_number_buf, "W");
                 input_changed = 1;  
             }
-            if (input_x >= 247 && input_x <= 301 && input_y >= 198 && input_y <= 254) { //E键
+            if (input_x >= 247 && input_x <= 301 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.account_number_buf, "E");
                 input_changed = 1;  
             }
-            if (input_x >= 331 && input_x <= 400 && input_y >= 198 && input_y <= 254) { //R键
+            if (input_x >= 331 && input_x <= 400 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.account_number_buf, "R");
                 input_changed = 1;  
             }
-            if (input_x >= 436 && input_x <= 495 && input_y >= 198 && input_y <= 254) { //T键
+            if (input_x >= 436 && input_x <= 495 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.account_number_buf, "T");
                 input_changed = 1;  
             }
-            if (input_x >= 544 && input_x <= 600 && input_y >= 198 && input_y <= 254) { //Y键
+            if (input_x >= 544 && input_x <= 600 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.account_number_buf, "Y");
                 input_changed = 1;  
             }
-            if (input_x >= 640 && input_x <= 694 && input_y >= 198 && input_y <= 254) { //U键
+            if (input_x >= 640 && input_x <= 694 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.account_number_buf, "U");
                 input_changed = 1;  
             }
-            if (input_x >= 740 && input_x <= 797 && input_y >= 198 && input_y <= 254) { //I键
+            if (input_x >= 740 && input_x <= 797 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.account_number_buf, "I");
                 input_changed = 1;  
             }
-            if (input_x >= 834 && input_x <= 900 && input_y >= 198 && input_y <= 254) { //O键
+            if (input_x >= 834 && input_x <= 900 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.account_number_buf, "O");
                 input_changed = 1;  
             }
-            if (input_x >= 927 && input_x <= 1024 && input_y >= 198 && input_y <= 254) { //P键
+            if (input_x >= 927 && input_x <= 1024 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.account_number_buf, "P");
                 input_changed = 1;  
             }
-            if (input_x >= 104 && input_x <= 150 && input_y >= 297 && input_y <= 353) { //A键
+            if (input_x >= 104 && input_x <= 150 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.account_number_buf, "A");
                 input_changed = 1;  
             }
-            if (input_x >= 194 && input_x <= 264 && input_y >= 297 && input_y <= 353) { //S键
+            if (input_x >= 194 && input_x <= 264 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.account_number_buf, "S");
                 input_changed = 1;  
             }
-            if (input_x >= 291 && input_x <= 350 && input_y >= 297 && input_y <= 353) { //D键
+            if (input_x >= 291 && input_x <= 350 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.account_number_buf, "D");
                 input_changed = 1;  
             }
-            if (input_x >= 385 && input_x <= 447 && input_y >= 297 && input_y <= 353) { //F键
+            if (input_x >= 385 && input_x <= 447 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.account_number_buf, "F");
                 input_changed = 1;  
             }
-            if (input_x >= 489 && input_x <= 544 && input_y >= 297 && input_y <= 353) { //G键
+            if (input_x >= 489 && input_x <= 544 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.account_number_buf, "G");
                 input_changed = 1;  
             }
-            if (input_x >= 589 && input_x <= 647 && input_y >= 297 && input_y <= 353) { //H键
+            if (input_x >= 589 && input_x <= 647 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.account_number_buf, "H");
                 input_changed = 1;  
             }
-            if (input_x >= 697 && input_x <= 742 && input_y >= 297 && input_y <= 353) { //J键
+            if (input_x >= 697 && input_x <= 742 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.account_number_buf, "J");
                 input_changed = 1;  
             }
-            if (input_x >= 789 && input_x <= 847 && input_y >= 297 && input_y <= 353) { //K键
+            if (input_x >= 789 && input_x <= 847 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.account_number_buf, "K");
                 input_changed = 1;  
             }
-            if (input_x >= 894 && input_x <= 938 && input_y >= 297 && input_y <= 353) { //L键
+            if (input_x >= 894 && input_x <= 938 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.account_number_buf, "L");
                 input_changed = 1;  
             }
-            if (input_x >= 155 && input_x <= 205 && input_y >= 400 && input_y <= 458) { //Z键
+            if (input_x >= 155 && input_x <= 205 && input_y >= 400 && input_y <= 458) {
                 strcat(user_info.account_number_buf, "Z");
                 input_changed = 1;  
             }
-            if (input_x >= 249 && input_x <= 297 && input_y >= 400 && input_y <= 458) { //X键
+            if (input_x >= 249 && input_x <= 297 && input_y >= 400 && input_y <= 458) {
                 strcat(user_info.account_number_buf, "X");
                 input_changed = 1;  
             }
-            if (input_x >= 342 && input_x <= 400 && input_y >= 400 && input_y <= 458) { //C键
+            if (input_x >= 342 && input_x <= 400 && input_y >= 400 && input_y <= 458) {
                 strcat(user_info.account_number_buf, "C");
                 input_changed = 1;  
             }
-            if (input_x >= 445 && input_x <= 495 && input_y >= 400 && input_y <= 458) { //V键
+            if (input_x >= 445 && input_x <= 495 && input_y >= 400 && input_y <= 458) {
                 strcat(user_info.account_number_buf, "V");
                 input_changed = 1;  
             }
-            if (input_x >= 541 && input_x <= 589 && input_y >= 400 && input_y <= 458) { //B键
+            if (input_x >= 541 && input_x <= 589 && input_y >= 400 && input_y <= 458) {
                 strcat(user_info.account_number_buf, "B");
                 input_changed = 1;  
             }
-            if (input_x >= 641 && input_x <= 692 && input_y >= 400 && input_y <= 458) { //N键
+            if (input_x >= 641 && input_x <= 692 && input_y >= 400 && input_y <= 458) {
                 strcat(user_info.account_number_buf, "N");
                 input_changed = 1;  
             }
-            if (input_x >= 739 && input_x <= 800 && input_y >= 400 && input_y <= 458) { //M键
+            if (input_x >= 739 && input_x <= 800 && input_y >= 400 && input_y <= 458) {
                 strcat(user_info.account_number_buf, "M");
                 input_changed = 1;  
             }
-            if (input_x >= 0 && input_x <= 120 && input_y >= 393 && input_y <= 600) { //删除键
+            if (input_x >= 0 && input_x <= 120 && input_y >= 393 && input_y <= 600) {
                 if (strlen(user_info.account_number_buf) > 0) {
                     user_info.account_number_buf[strlen(user_info.account_number_buf) - 1] = '\0';
                 }
                 input_changed = 1;  
             }
 
+            /* 标记输入变化 */
             if (input_changed) {
-                // 绘制账号输入文本框背景
                 lcd_draw_filled_rectangle(
-                    0, 0,               /* 左上角坐标 (x, y) */
-                    1024, 143,          /* 矩形宽度和高度 */
-                    COLOR_WHITE         /* 填充颜色 */ 
+                    0, 0,                           /* 左上角坐标 (x, y) */
+                    1024, 143,                      /* 矩形宽度和高度 */
+                    COLOR_WHITE                     /* 填充颜色 */ 
                 );
-                /* 账号输入文本框 */ 
                 lcd_render_text_with_box(
-                    user_info.account_number_buf,      /* 文本内容 */
-                    70, 51,                /* 起始坐标 (x, y) */
-                    COLOR_BLACK,             /* 文本颜色 */ 
-                    COLOR_WHITE,             /* 文本框背景颜色 */ 
-                    0,                       /* 文本与文本框边缘的间距 */ 
-                    BOX_STYLE_RECTANGLE,     /* 矩形样式 */ 
-                    0,                       /* 矩形样式不需要半径 */
-                    60,                      /* 字体大小 */
-                    0,                     /* 文本框宽度 */
-                    0                       /* 文本框高度 */
+                    user_info.account_number_buf,   /* 文本内容 */
+                    70, 51,                         /* 起始坐标 (x, y) */
+                    COLOR_BLACK,                    /* 文本颜色 */ 
+                    COLOR_WHITE,                    /* 文本框背景颜色 */ 
+                    0,                              /* 文本与文本框边缘的间距 */ 
+                    BOX_STYLE_RECTANGLE,            /* 矩形样式 */ 
+                    0,                              /* 矩形样式不需要半径 */
+                    60,                             /* 字体大小 */
+                    0,                              /* 文本框宽度 */
+                    0                               /* 文本框高度 */
                 );        
-                /* 确认按钮 */
                 lcd_render_text_with_box(
-                    "确认",      /* 文本内容 */
-                    800, 51,                /* 起始坐标 (x, y) */
-                    COLOR_WHITE,             /* 文本颜色 */ 
-                    COLOR_LIGHTGRAY,             /* 文本框背景颜色 */ 
-                    0,                       /* 文本与文本框边缘的间距 */ 
-                    BOX_STYLE_ROUNDED,     /* 矩形样式 */ 
-                    15,                       /* 矩形样式不需要半径 */
-                    60,                      /* 字体大小 */
-                    0,                       /* 文本框宽度 */
-                    0                        /* 文本框高度 */
+                    "确认",                         /* 文本内容 */
+                    800, 51,                        /* 起始坐标 (x, y) */
+                    COLOR_WHITE,                    /* 文本颜色 */ 
+                    COLOR_LIGHTGRAY,                /* 文本框背景颜色 */ 
+                    0,                              /* 文本与文本框边缘的间距 */ 
+                    BOX_STYLE_ROUNDED,              /* 圆角矩形样式 */ 
+                    15,                             /* 圆角矩形半径 */
+                    60,                             /* 字体大小 */
+                    0,                              /* 文本框宽度 */
+                    0                               /* 文本框高度 */
                 );
             }
         }
@@ -2729,60 +2809,60 @@ void find_account_password_box()
 {
     /* 初始化字库 */
     if (lcd_init("/dev/fb0", "simkai.ttf") != 0) {
-        printf("初始化失败。\n");
+        printf("Font library initialization failed.\n");
         return;
     }
 
-    /* 置顶密码输入框，以解决闪烁问题 */
-    show_bmp_to_lcd("find_account.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
-    /* 绘制密码输入文本框背景 */
+    /* 加载背景图层 */
+    show_bmp_to_lcd("find_account.bmp", 0, 0, 1024, 600);    
+    /* 渲染密码文本框背景 */
     lcd_draw_filled_rectangle(
-        0, 0,               /* 左上角坐标 (x, y) */
-        1024, 143,          /* 矩形宽度和高度 */
-        COLOR_WHITE         /* 填充颜色 */ 
+        0, 0,                           /* 左上角坐标 (x, y) */
+        1024, 143,                      /* 矩形宽度和高度 */
+        COLOR_WHITE                     /* 填充颜色 */ 
     );
     /* 绘制密码输入文本框 */
     lcd_render_text_with_box(
-        user_info.password_number_buf,      /* 文本内容 */
-        70, 51,                /* 起始坐标 (x, y) */
-        COLOR_BLACK,             /* 文本颜色 */ 
-        COLOR_WHITE,             /* 文本框背景颜色 */ 
-        0,                       /* 文本与文本框边缘的间距 */ 
-        BOX_STYLE_RECTANGLE,     /* 矩形样式 */ 
-        0,                       /* 矩形样式不需要半径 */
-        60,                      /* 字体大小 */
-        0,                     /* 文本框宽度 */
-        0                       /* 文本框高度 */
+        user_info.password_number_buf,  /* 文本内容 */
+        70, 51,                         /* 起始坐标 (x, y) */
+        COLOR_BLACK,                    /* 文本颜色 */ 
+        COLOR_WHITE,                    /* 文本框背景颜色 */ 
+        0,                              /* 文本与文本框边缘的间距 */ 
+        BOX_STYLE_RECTANGLE,            /* 矩形样式 */ 
+        0,                              /* 矩形样式不需要半径 */
+        60,                             /* 字体大小 */
+        0,                              /* 文本框宽度 */
+        0                               /* 文本框高度 */
     );
-
     /* 绘制确认按钮 */
     lcd_render_text_with_box(
-        "确认",      /* 文本内容 */
-        800, 51,                /* 起始坐标 (x, y) */
-        COLOR_WHITE,             /* 文本颜色 */ 
-        COLOR_LIGHTGRAY,             /* 文本框背景颜色 */ 
-        0,                       /* 文本与文本框边缘的间距 */ 
-        BOX_STYLE_ROUNDED,     /* 矩形样式 */ 
-        15,                       /* 矩形样式不需要半径 */
-        60,                      /* 字体大小 */
-        0,                       /* 文本框宽度 */
-        0                        /* 文本框高度 */
+        "确认",                         /* 文本内容 */
+        800, 51,                        /* 起始坐标 (x, y) */
+        COLOR_WHITE,                    /* 文本颜色 */ 
+        COLOR_LIGHTGRAY,                /* 文本框背景颜色 */ 
+        0,                              /* 文本与文本框边缘的间距 */ 
+        BOX_STYLE_ROUNDED,              /* 圆角矩形样式 */ 
+        15,                             /* 圆角矩形半径 */
+        60,                             /* 字体大小 */
+        0,                              /* 文本框宽度 */
+        0                               /* 文本框高度 */
     );
-    keyboard();    /* 加载键盘 */
+    /* 加载键盘 */
+    keyboard();    
 
-    // 打开触摸屏文件
+    /* 打开触摸屏文件 */ 
     int input_fd = open("/dev/input/event1", O_RDWR);
     if (input_fd == -1) {
         perror("Failed to open touchscreen device");
         return;
     }
-
     struct input_event input_buf;
 
     while (1) {
-        int input_changed = 0;  // 标记输入是否有变化
+        /* 标记输入是否有变化 */ 
+        int input_changed = 0;  
 
-        // 读取触摸屏数据
+        /* 读取触摸屏数据 */ 
         read(input_fd, &input_buf, sizeof(input_buf));
         if (input_buf.type == EV_ABS && input_buf.code == ABS_X) {
             input_x = input_buf.value;
@@ -2791,134 +2871,137 @@ void find_account_password_box()
             input_y = input_buf.value;
         }
         if (input_buf.type == EV_KEY && input_buf.code == BTN_TOUCH && input_buf.value == 0) {
-            // 判断是否点击了确认按钮
             if ((input_x >= 800 && input_x <= 900 && input_y >= 51 && input_y <= 111) || 
-                (input_x >= 876 && input_x <= 1024 && input_y >= 400 && input_y <= 600)) {  /* 确认按钮和确认键 */
-                /* 处理确认按钮点击事件 */
+                (input_x >= 876 && input_x <= 1024 && input_y >= 400 && input_y <= 600)) {  
+                /* 确认按钮和确认键 */
+
+                /* 处理账号输入 */
                 if (strlen(user_info.account_number_buf) == 0) {
                     if (strlen(user_info.password_number_buf) >= 8 && strlen(user_info.password_number_buf) <= 12) {
-                        /* 仅当密码符合条件时才显示图层 */
-                        show_bmp_to_lcd("find_account.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
+                        /* 加载背景图层 */
+                        show_bmp_to_lcd("find_account.bmp", 0, 0, 1024, 600);    
                         /* 账号背景文本框 */
                         lcd_draw_filled_rectangle(
-                            104, 248,       /* 左上角坐标 (x, y) */
-                            386, 50,        /* 矩形宽度和高度 */
-                            COLOR_WHITE     /* 填充颜色 */
+                            104, 248,               /* 左上角坐标 (x, y) */
+                            386, 50,                /* 矩形宽度和高度 */
+                            COLOR_WHITE             /* 填充颜色 */
                         );
                         lcd_render_text(
-                            "请输入要找回的账号",                       /* 文本内容 */
-                            104, 260,                           /* 起始坐标 (x, y) */
-                            COLOR_LIGHTGRAY,                    /* 文本颜色 */
-                            25                                  /* 字体大小 */
+                            "请输入要找回的账号",     /* 文本内容 */
+                            104, 260,               /* 起始坐标 (x, y) */
+                            COLOR_LIGHTGRAY,        /* 文本颜色 */
+                            25                      /* 字体大小 */
                         );
                     } else {
                         /* 密码不符合条件，屏幕开始提示，不显示图层 */
                         /* 账号背景文本框 */
                         lcd_draw_filled_rectangle(
-                            0, 0,       /* 左上角坐标 (x, y) */
-                            1, 1,        /* 矩形宽度和高度 */
-                            COLOR_WHITE     /* 填充颜色 */
+                            0, 0,                   /* 左上角坐标 (x, y) */
+                            1, 1,                   /* 矩形宽度和高度 */
+                            COLOR_WHITE             /* 填充颜色 */
                         );
                     }           
                 } else {
                     if (strlen(user_info.password_number_buf) >= 8 && strlen(user_info.password_number_buf) <= 12) {
-                        /* 仅当密码符合条件时才显示图层 */
-                        show_bmp_to_lcd("find_account.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
-                        /* 账号背景文本框 */
+                        /* 加载背景图层 */
+                        show_bmp_to_lcd("find_account.bmp", 0, 0, 1024, 600);    
+                        /* 渲染账号背景文本框 */
                         lcd_draw_filled_rectangle(
-                            104, 248,       /* 左上角坐标 (x, y) */
-                            386, 50,        /* 矩形宽度和高度 */
-                            COLOR_WHITE     /* 填充颜色 */
+                            104, 248,                       /* 左上角坐标 (x, y) */
+                            386, 50,                        /* 矩形宽度和高度 */
+                            COLOR_WHITE                     /* 填充颜色 */
                         );
                         /* 账号输入文本框 */ 
                         lcd_render_text_with_box(
-                            user_info.account_number_buf,      /* 文本内容 */
-                            104, 248,                /* 起始坐标 (x, y) */
-                            COLOR_BLACK,             /* 文本颜色 */ 
-                            COLOR_WHITE,             /* 文本框背景颜色 */ 
-                            0,                       /* 文本与文本框边缘的间距 */ 
-                            BOX_STYLE_RECTANGLE,     /* 矩形样式 */ 
-                            0,                       /* 矩形样式不需要半径 */
-                            50,                      /* 字体大小 */
-                            386,                     /* 文本框宽度 */
-                            50                       /* 文本框高度 */
+                            user_info.account_number_buf,   /* 文本内容 */
+                            104, 248,                       /* 起始坐标 (x, y) */
+                            COLOR_BLACK,                    /* 文本颜色 */ 
+                            COLOR_WHITE,                    /* 文本框背景颜色 */ 
+                            0,                              /* 文本与文本框边缘的间距 */ 
+                            BOX_STYLE_RECTANGLE,            /* 矩形样式 */ 
+                            0,                              /* 矩形样式不需要半径 */
+                            50,                             /* 字体大小 */
+                            386,                            /* 文本框宽度 */
+                            50                              /* 文本框高度 */
                         );
                     } else {
                         /* 密码不符合条件，屏幕提示，不显示图层 */
-                        //show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);
+                        //show_bmp_to_lcd("login_initialization.bmp", 0, 0, 1024, 600);
                         /* 账号背景文本框 */
                         lcd_draw_filled_rectangle(
-                            0, 0,       /* 左上角坐标 (x, y) */
-                            1, 1,        /* 矩形宽度和高度 */
-                            COLOR_WHITE     /* 填充颜色 */
+                            0, 0,                           /* 左上角坐标 (x, y) */
+                            1, 1,                           /* 矩形宽度和高度 */
+                            COLOR_WHITE                     /* 填充颜色 */
                         );
                     }
                 }
 
+                /* 处理密码输入 */
                 /* 显示或隐藏密码开关 */
                 int show_hide_password_flags = 0;
-
                 /* 空密码时 */
                 if (strlen(user_info.password_number_buf) == 0) {
-                    show_bmp_to_lcd("find_account.bmp", 0, 0, 1024, 600);    /* 加载背景图层 */
+                    /* 加载背景图层 */
+                    show_bmp_to_lcd("find_account.bmp", 0, 0, 1024, 600);    
                     /* 密码背景文本框 */
                     lcd_draw_filled_rectangle(
-                        104, 310,       /* 左上角坐标 (x, y) */
-                        386, 50,        /* 矩形宽度和高度 */
-                        COLOR_WHITE     /* 填充颜色 */
+                        104, 310,                       /* 左上角坐标 (x, y) */
+                        386, 50,                        /* 矩形宽度和高度 */
+                        COLOR_WHITE                     /* 填充颜色 */
                     );
                     lcd_render_text(
-                        "请输入要修改的密码(8-12位)",            /* 文本内容 */
-                        104, 323,               /* 起始坐标 (x, y) */
-                        COLOR_LIGHTGRAY,        /* 文本颜色 */
-                        25                      /* 字体大小 */
+                        "请输入要修改的密码(8-12位)",     /* 文本内容 */
+                        104, 323,                       /* 起始坐标 (x, y) */
+                        COLOR_LIGHTGRAY,                /* 文本颜色 */
+                        25                              /* 字体大小 */
                     );
                     /* 单独账号渲染,防止界面紊乱 */
                     if (strlen(user_info.account_number_buf) == 0) {
                         /* 账号背景文本框 */
                         lcd_draw_filled_rectangle(
-                            104, 248,       /* 左上角坐标 (x, y) */
-                            386, 50,        /* 矩形宽度和高度 */
-                            COLOR_WHITE     /* 填充颜色 */
+                            104, 248,                   /* 左上角坐标 (x, y) */
+                            386, 50,                    /* 矩形宽度和高度 */
+                            COLOR_WHITE                 /* 填充颜色 */
                         );
                         lcd_render_text(
-                            "请输入要找回的账号",                       /* 文本内容 */
-                            104, 260,                           /* 起始坐标 (x, y) */
-                            COLOR_LIGHTGRAY,                    /* 文本颜色 */
-                            25                                  /* 字体大小 */
+                            "请输入要找回的账号",         /* 文本内容 */
+                            104, 260,                   /* 起始坐标 (x, y) */
+                            COLOR_LIGHTGRAY,            /* 文本颜色 */
+                            25                          /* 字体大小 */
                         );
                     }
 
+                    /* 默认隐藏密码 */
                     show_bmp_to_lcd("hide_password.bmp", 448, 315, 40, 40);
                     while (2) {
                         ts_fun();
                         if (input_x >= 450 && input_x <= 495 && input_y >= 322 && input_y <= 360) {
-                            /* 切换标志变量 */ 
+                            /* 切换显示隐藏密码开关 */ 
                             show_hide_password_flags = !show_hide_password_flags;
                             if (show_hide_password_flags) {
                                 lcd_draw_filled_rectangle(
-                                    104, 310,       /* 左上角坐标 (x, y) */
-                                    386, 50,        /* 矩形宽度和高度 */
-                                    COLOR_WHITE     /* 填充颜色 */
+                                    104, 310,                   /* 左上角坐标 (x, y) */
+                                    386, 50,                    /* 矩形宽度和高度 */
+                                    COLOR_WHITE                 /* 填充颜色 */
                                 );
                                 lcd_render_text(
-                                    "请输入要修改的密码(8-12位)",            /* 文本内容 */
-                                    104, 323,               /* 起始坐标 (x, y) */
-                                    COLOR_LIGHTGRAY,        /* 文本颜色 */
-                                    25                      /* 字体大小 */
+                                    "请输入要修改的密码(8-12位)", /* 文本内容 */
+                                    104, 323,                   /* 起始坐标 (x, y) */
+                                    COLOR_LIGHTGRAY,            /* 文本颜色 */
+                                    25                          /* 字体大小 */
                                 );
                                 show_bmp_to_lcd("show_password.bmp", 448, 315, 40, 40);
                             } else {
                                 lcd_draw_filled_rectangle(
-                                    104, 310,       /* 左上角坐标 (x, y) */
-                                    386, 50,        /* 矩形宽度和高度 */
-                                    COLOR_WHITE     /* 填充颜色 */
+                                    104, 310,                   /* 左上角坐标 (x, y) */
+                                    386, 50,                    /* 矩形宽度和高度 */
+                                    COLOR_WHITE                 /* 填充颜色 */
                                 );
                                 lcd_render_text(
-                                    "请输入要修改的密码(8-12位)",            /* 文本内容 */
-                                    104, 323,               /* 起始坐标 (x, y) */
-                                    COLOR_LIGHTGRAY,        /* 文本颜色 */
-                                    25                      /* 字体大小 */
+                                    "请输入要修改的密码(8-12位)", /* 文本内容 */
+                                    104, 323,                   /* 起始坐标 (x, y) */
+                                    COLOR_LIGHTGRAY,            /* 文本颜色 */
+                                    25                          /* 字体大小 */
                                 );
                                 show_bmp_to_lcd("hide_password.bmp", 448, 315, 40, 40);
                             }
@@ -2929,81 +3012,81 @@ void find_account_password_box()
                             find_account_password_box();
                             return;
                         } else if (input_x >= 104 && input_x <= 248 && input_y >= 400 && input_y <= 500) {
-                            find_account_allow_flags = 0;    /* 空账号与密码强制不允许登录 */
+                            /* 空账号与密码强制不允许找回 */
+                            find_account_allow_flags = 0;    
                             find_account_judgment_1();
                             return;
                         }
                     }
                     break;
                 }
-
                 /* 非空密码时 密码位数：8-12 */
                 if (strlen(user_info.password_number_buf) >= 8 && strlen(user_info.password_number_buf) <= 12) {
                     /* 密码背景文本框 */
                     lcd_draw_filled_rectangle(
-                        104, 310,       /* 左上角坐标 (x, y) */
-                        386, 50,        /* 矩形宽度和高度 */
-                        COLOR_WHITE     /* 填充颜色 */
+                        104, 310,                           /* 左上角坐标 (x, y) */
+                        386, 50,                            /* 矩形宽度和高度 */
+                        COLOR_WHITE                         /* 填充颜色 */
                     );
                     /* 密码输入文本框 */
                     lcd_render_text_with_box(
-                        user_info.hide_password_number_buf,      /* 文本内容 */
-                        104, 310,                /* 起始坐标 (x, y) */
-                        COLOR_BLACK,             /* 文本颜色 */  
-                        COLOR_WHITE,             /* 文本框背景颜色 */
-                        0,                       /* 文本与文本框边缘的间距 */
-                        BOX_STYLE_RECTANGLE,     /* 矩形样式 */
-                        0,                       /* 矩形样式不需要半径 */
-                        50,                      /* 字体大小 */
-                        386,                       /* 文本框宽度 */
-                        50                        /* 文本框高度 */
+                        user_info.hide_password_number_buf, /* 文本内容 */
+                        104, 310,                           /* 起始坐标 (x, y) */
+                        COLOR_BLACK,                        /* 文本颜色 */  
+                        COLOR_WHITE,                        /* 文本框背景颜色 */
+                        0,                                  /* 文本与文本框边缘的间距 */
+                        BOX_STYLE_RECTANGLE,                /* 矩形样式 */
+                        0,                                  /* 矩形样式不需要半径 */
+                        50,                                 /* 字体大小 */
+                        386,                                /* 文本框宽度 */
+                        50                                  /* 文本框高度 */
                     );
                     show_bmp_to_lcd("hide_password.bmp", 448, 315, 40, 40);
                     while (3) {
                         ts_fun();
                         if (input_x >= 450 && input_x <= 495 && input_y >= 322 && input_y <= 360) {
-                            /* 切换标志变量 */ 
+                            /* 切换显示隐藏密码开关 */ 
                             show_hide_password_flags = !show_hide_password_flags;
                             if (show_hide_password_flags) {
                                 /* 显示密码 */
                                 lcd_draw_filled_rectangle(
-                                    104, 310,       /* 左上角坐标 (x, y) */
-                                    386, 50,        /* 矩形宽度和高度 */
-                                    COLOR_WHITE     /* 填充颜色 */
+                                    104, 310,                       /* 左上角坐标 (x, y) */
+                                    386, 50,                        /* 矩形宽度和高度 */
+                                    COLOR_WHITE                     /* 填充颜色 */
                                 );
-                                /* 密码输入文本框 */
+                                /* 渲染密码背景文本框 */
                                 lcd_render_text_with_box(
-                                    user_info.password_number_buf,      /* 文本内容 */
-                                    104, 310,                /* 起始坐标 (x, y) */
-                                    COLOR_BLACK,             /* 文本颜色 */  
-                                    COLOR_WHITE,             /* 文本框背景颜色 */
-                                    0,                       /* 文本与文本框边缘的间距 */
-                                    BOX_STYLE_RECTANGLE,     /* 矩形样式 */
-                                    0,                       /* 矩形样式不需要半径 */
-                                    50,                      /* 字体大小 */
-                                    386,                       /* 文本框宽度 */
-                                    50                        /* 文本框高度 */
+                                    user_info.password_number_buf,  /* 文本内容 */
+                                    104, 310,                       /* 起始坐标 (x, y) */
+                                    COLOR_BLACK,                    /* 文本颜色 */  
+                                    COLOR_WHITE,                    /* 文本框背景颜色 */
+                                    0,                              /* 文本与文本框边缘的间距 */
+                                    BOX_STYLE_RECTANGLE,            /* 矩形样式 */
+                                    0,                              /* 矩形样式不需要半径 */
+                                    50,                             /* 字体大小 */
+                                    386,                            /* 文本框宽度 */
+                                    50                              /* 文本框高度 */
                                 );
                                 show_bmp_to_lcd("show_password.bmp", 448, 315, 40, 40);
                             } else {
                                 /* 隐藏密码 */
                                 lcd_draw_filled_rectangle(
-                                    104, 310,       /* 左上角坐标 (x, y) */
-                                    386, 50,        /* 矩形宽度和高度 */
-                                    COLOR_WHITE     /* 填充颜色 */
+                                    104, 310,                           /* 左上角坐标 (x, y) */
+                                    386, 50,                            /* 矩形宽度和高度 */
+                                    COLOR_WHITE                         /* 填充颜色 */
                                 );
-                                /* 密码输入文本框 */
+                                /* 渲染密码背景文本框 */
                                 lcd_render_text_with_box(
-                                    user_info.hide_password_number_buf,      /* 文本内容 */
-                                    104, 310,                /* 起始坐标 (x, y) */
-                                    COLOR_BLACK,             /* 文本颜色 */  
-                                    COLOR_WHITE,             /* 文本框背景颜色 */
-                                    0,                       /* 文本与文本框边缘的间距 */
-                                    BOX_STYLE_RECTANGLE,     /* 矩形样式 */
-                                    0,                       /* 矩形样式不需要半径 */
-                                    50,                      /* 字体大小 */
-                                    386,                       /* 文本框宽度 */
-                                    50                        /* 文本框高度 */
+                                    user_info.hide_password_number_buf,  /* 文本内容 */
+                                    104, 310,                            /* 起始坐标 (x, y) */
+                                    COLOR_BLACK,                         /* 文本颜色 */  
+                                    COLOR_WHITE,                         /* 文本框背景颜色 */
+                                    0,                                   /* 文本与文本框边缘的间距 */
+                                    BOX_STYLE_RECTANGLE,                 /* 矩形样式 */
+                                    0,                                   /* 矩形样式不需要半径 */
+                                    50,                                  /* 字体大小 */
+                                    386,                                 /* 文本框宽度 */
+                                    50                                   /* 文本框高度 */
                                 );
                                 show_bmp_to_lcd("hide_password.bmp", 448, 315, 40, 40);
                             }
@@ -3014,7 +3097,8 @@ void find_account_password_box()
                             find_account_password_box();
                             break;
                         } else if (input_x >= 104 && input_x <= 248 && input_y >= 400 && input_y <= 500) {
-                            find_account_allow_flags = 1;    /* 满足输入条件，允许登录 */
+                            /* 满足输入条件，允许找回 */
+                            find_account_allow_flags = 1;    
                             find_account_judgment_1();
                             return;
                         }
@@ -3022,16 +3106,16 @@ void find_account_password_box()
                 } else {
                     /* 密码位数小于8或大于12 */
                     lcd_render_text_with_box(
-                        "密码不符合要求，请重新输入8-12位密码！",          /* 文本内容 */
-                        233, 400,                       /* 起始坐标 (x, y) */
-                        COLOR_WHITE,                    /* 文本颜色 */
-                        COLOR_LIGHTGRAY,                /* 文本框背景颜色 */
-                        10,                             /* 文本与文本框边缘的间距 */
-                        BOX_STYLE_ROUNDED,              /* 圆角样式 */
-                        15,                             /* 圆角半径 */
-                        30,                             /* 字体大小 */
-                        0,                              /* 文本框宽度 */
-                        0                               /* 文本框高度 */
+                        "密码不符合要求，请重新输入8-12位密码！",   /* 文本内容 */
+                        233, 400,                               /* 起始坐标 (x, y) */
+                        COLOR_WHITE,                            /* 文本颜色 */
+                        COLOR_LIGHTGRAY,                        /* 文本框背景颜色 */
+                        10,                                     /* 文本与文本框边缘的间距 */
+                        BOX_STYLE_ROUNDED,                      /* 圆角矩形样式 */
+                        15,                                     /* 圆角矩形半径 */
+                        30,                                     /* 字体大小 */
+                        0,                                      /* 文本框宽度 */
+                        0                                       /* 文本框高度 */
                     );
                     sleep(3);
                     find_account_allow_flags = 0;
@@ -3042,143 +3126,144 @@ void find_account_password_box()
                 }
                 break;
             }
-            // 处理键盘点击事件
-            if (input_x >= 224 && input_x <= 810 && input_y >= 503 && input_y <= 600) { //空格键
+
+            /* 处理键盘点击事件 */ 
+            if (input_x >= 224 && input_x <= 810 && input_y >= 503 && input_y <= 600) {
                 strcat(user_info.password_number_buf, " ");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 0 && input_x <= 100 && input_y >= 198 && input_y <= 254) { //Q键
+            if (input_x >= 0 && input_x <= 100 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.password_number_buf, "Q");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 144 && input_x <= 210 && input_y >= 198 && input_y <= 254) { //W键
+            if (input_x >= 144 && input_x <= 210 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.password_number_buf, "W");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 247 && input_x <= 301 && input_y >= 198 && input_y <= 254) { //E键
+            if (input_x >= 247 && input_x <= 301 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.password_number_buf, "E");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 331 && input_x <= 400 && input_y >= 198 && input_y <= 254) { //R键
+            if (input_x >= 331 && input_x <= 400 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.password_number_buf, "R");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 436 && input_x <= 495 && input_y >= 198 && input_y <= 254) { //T键
+            if (input_x >= 436 && input_x <= 495 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.password_number_buf, "T");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 544 && input_x <= 600 && input_y >= 198 && input_y <= 254) { //Y键
+            if (input_x >= 544 && input_x <= 600 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.password_number_buf, "Y");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 640 && input_x <= 694 && input_y >= 198 && input_y <= 254) { //U键
+            if (input_x >= 640 && input_x <= 694 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.password_number_buf, "U");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 740 && input_x <= 797 && input_y >= 198 && input_y <= 254) { //I键
+            if (input_x >= 740 && input_x <= 797 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.password_number_buf, "I");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 834 && input_x <= 900 && input_y >= 198 && input_y <= 254) { //O键
+            if (input_x >= 834 && input_x <= 900 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.password_number_buf, "O");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 927 && input_x <= 1024 && input_y >= 198 && input_y <= 254) { //P键
+            if (input_x >= 927 && input_x <= 1024 && input_y >= 198 && input_y <= 254) {
                 strcat(user_info.password_number_buf, "P");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 104 && input_x <= 150 && input_y >= 297 && input_y <= 353) { //A键
+            if (input_x >= 104 && input_x <= 150 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.password_number_buf, "A");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 194 && input_x <= 264 && input_y >= 297 && input_y <= 353) { //S键
+            if (input_x >= 194 && input_x <= 264 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.password_number_buf, "S");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 291 && input_x <= 350 && input_y >= 297 && input_y <= 353) { //D键
+            if (input_x >= 291 && input_x <= 350 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.password_number_buf, "D");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 385 && input_x <= 447 && input_y >= 297 && input_y <= 353) { //F键
+            if (input_x >= 385 && input_x <= 447 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.password_number_buf, "F");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 489 && input_x <= 544 && input_y >= 297 && input_y <= 353) { //G键
+            if (input_x >= 489 && input_x <= 544 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.password_number_buf, "G");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 589 && input_x <= 647 && input_y >= 297 && input_y <= 353) { //H键
+            if (input_x >= 589 && input_x <= 647 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.password_number_buf, "H");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 697 && input_x <= 742 && input_y >= 297 && input_y <= 353) { //J键
+            if (input_x >= 697 && input_x <= 742 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.password_number_buf, "J");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 789 && input_x <= 847 && input_y >= 297 && input_y <= 353) { //K键
+            if (input_x >= 789 && input_x <= 847 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.password_number_buf, "K");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 894 && input_x <= 938 && input_y >= 297 && input_y <= 353) { //L键
+            if (input_x >= 894 && input_x <= 938 && input_y >= 297 && input_y <= 353) {
                 strcat(user_info.password_number_buf, "L");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 155 && input_x <= 205 && input_y >= 400 && input_y <= 458) { //Z键
+            if (input_x >= 155 && input_x <= 205 && input_y >= 400 && input_y <= 458) {
                 strcat(user_info.password_number_buf, "Z");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 249 && input_x <= 297 && input_y >= 400 && input_y <= 458) { //X键
+            if (input_x >= 249 && input_x <= 297 && input_y >= 400 && input_y <= 458) {
                 strcat(user_info.password_number_buf, "X");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 342 && input_x <= 400 && input_y >= 400 && input_y <= 458) { //C键
+            if (input_x >= 342 && input_x <= 400 && input_y >= 400 && input_y <= 458) {
                 strcat(user_info.password_number_buf, "C");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 445 && input_x <= 495 && input_y >= 400 && input_y <= 458) { //V键
+            if (input_x >= 445 && input_x <= 495 && input_y >= 400 && input_y <= 458) {
                 strcat(user_info.password_number_buf, "V");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 541 && input_x <= 589 && input_y >= 400 && input_y <= 458) { //B键
+            if (input_x >= 541 && input_x <= 589 && input_y >= 400 && input_y <= 458) {
                 strcat(user_info.password_number_buf, "B");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 641 && input_x <= 692 && input_y >= 400 && input_y <= 458) { //N键
+            if (input_x >= 641 && input_x <= 692 && input_y >= 400 && input_y <= 458) {
                 strcat(user_info.password_number_buf, "N");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 739 && input_x <= 800 && input_y >= 400 && input_y <= 458) { //M键
+            if (input_x >= 739 && input_x <= 800 && input_y >= 400 && input_y <= 458) {
                 strcat(user_info.password_number_buf, "M");
                 strcat(user_info.hide_password_number_buf, "*");
                 input_changed = 1;  
             }
-            if (input_x >= 0 && input_x <= 120 && input_y >= 393 && input_y <= 600) { //删除键
+            if (input_x >= 0 && input_x <= 120 && input_y >= 393 && input_y <= 600) {
                 if (strlen(user_info.password_number_buf) > 0) {
                     user_info.password_number_buf[strlen(user_info.password_number_buf) - 1] = '\0';
                 }
@@ -3188,38 +3273,36 @@ void find_account_password_box()
                 input_changed = 1;  
             }
 
+            /* 标记输入变化 */
             if (input_changed) {
-                // 绘制密码输入文本框背景
                 lcd_draw_filled_rectangle(
-                    0, 0,               /* 左上角坐标 (x, y) */
-                    1024, 143,          /* 矩形宽度和高度 */
-                    COLOR_WHITE         /* 填充颜色 */ 
+                    0, 0,                           /* 左上角坐标 (x, y) */
+                    1024, 143,                      /* 矩形宽度和高度 */
+                    COLOR_WHITE                     /* 填充颜色 */ 
                 );
-                /* 密码输入文本框 */ 
                 lcd_render_text_with_box(
-                    user_info.password_number_buf,      /* 文本内容 */
-                    70, 51,                /* 起始坐标 (x, y) */
-                    COLOR_BLACK,             /* 文本颜色 */ 
-                    COLOR_WHITE,             /* 文本框背景颜色 */ 
-                    0,                       /* 文本与文本框边缘的间距 */ 
-                    BOX_STYLE_RECTANGLE,     /* 矩形样式 */ 
-                    0,                       /* 矩形样式不需要半径 */
-                    60,                      /* 字体大小 */
-                    0,                     /* 文本框宽度 */
-                    0                       /* 文本框高度 */
+                    user_info.password_number_buf,  /* 文本内容 */
+                    70, 51,                     /* 起始坐标 (x, y) */
+                    COLOR_BLACK,                    /* 文本颜色 */ 
+                    COLOR_WHITE,                    /* 文本框背景颜色 */ 
+                    0,                              /* 文本与文本框边缘的间距 */ 
+                    BOX_STYLE_RECTANGLE,            /* 矩形样式 */ 
+                    0,                              /* 矩形样式不需要半径 */
+                    60,                             /* 字体大小 */
+                    0,                              /* 文本框宽度 */
+                    0                               /* 文本框高度 */
                 );        
-                /* 确认按钮 */
                 lcd_render_text_with_box(
-                    "确认",                 /* 文本内容 */
-                    800, 51,                /* 起始坐标 (x, y) */
-                    COLOR_WHITE,            /* 文本颜色 */ 
-                    COLOR_LIGHTGRAY,        /* 文本框背景颜色 */ 
-                    0,                      /* 文本与文本框边缘的间距 */ 
-                    BOX_STYLE_ROUNDED,      /* 矩形样式 */ 
-                    15,                     /* 矩形样式不需要半径 */
-                    60,                     /* 字体大小 */
-                    0,                      /* 文本框宽度 */
-                    0                       /* 文本框高度 */
+                    "确认",                         /* 文本内容 */
+                    800, 51,                        /* 起始坐标 (x, y) */
+                    COLOR_WHITE,                    /* 文本颜色 */ 
+                    COLOR_LIGHTGRAY,                /* 文本框背景颜色 */ 
+                    0,                              /* 文本与文本框边缘的间距 */ 
+                    BOX_STYLE_ROUNDED,              /* 圆角矩形样式 */ 
+                    15,                             /* 圆角矩形半径 */
+                    60,                             /* 字体大小 */
+                    0,                              /* 文本框宽度 */
+                    0                               /* 文本框高度 */
                 );
             }
         }
@@ -3243,7 +3326,7 @@ void generate_random_code(char *code) {
 void update_countdown_display() {
     /* 初始化字库 */
     if (lcd_init("/dev/fb0", "simkai.ttf") != 0) {
-        printf("初始化失败。\n");
+        printf("Font library initialization failed.\n");
         return;
     }
     
@@ -3282,18 +3365,21 @@ void update_countdown_display() {
             );
         }
     }
+
+    /* 不要清理资源，会阻塞线程 */
+    //lcd_cleanup();
 }
 
 /* 停止验证码线程 */ 
 void stop_code_thread() {
     if (thread_running) {
-        // 尝试取消线程
+        /* 尝试强制取消线程 */ 
         pthread_cancel(code_thread);
-        // 等待线程结束
+        /* 安全等待线程结束 */ 
         pthread_join(code_thread, NULL);
-        // 更新线程运行状态
+        /* 更新线程运行状态 */ 
         thread_running = 0;
-        // 重置倒计时和按钮状态
+        /* 重置倒计时和按钮状态 */ 
         countdown = 0;
         code_button_clicked = 0;
         code_button_visible = 1;
@@ -3360,7 +3446,7 @@ void *send_verification_code(void *arg) {
 void find_account_verification() {
     /* 初始化字库 */
     if (lcd_init("/dev/fb0", "simkai.ttf") != 0) {
-        printf("初始化失败。\n");
+        printf("Font library initialization failed.\n");
         return;
     }
 
@@ -3404,7 +3490,8 @@ void find_account_verification() {
         if (input_x >= 104 && input_x <= 290 && input_y >= 248 && input_y <= 300) {
             /* 隐藏验证码按钮 */
             code_button_visible = 0;
-            keyboard();    /* 加载键盘 */
+            /* 加载键盘 */
+            keyboard();    
 
             /* 打开触摸屏文件 */ 
             int input_fd = open("/dev/input/event1", O_RDWR);
@@ -3414,13 +3501,12 @@ void find_account_verification() {
                 continue;
             }
 
-            /* 绘制验证码输入文本框背景 */
+            /* 渲染验证码文本框背景 */
             lcd_draw_filled_rectangle(
                 0, 0,                               /* 左上角坐标 (x, y) */
                 1024, 143,                          /* 矩形宽度和高度 */
                 COLOR_WHITE                         /* 填充颜色 */ 
             );
-            /* 绘制验证码输入文本框 */
             lcd_render_text_with_box(
                 user_info.verification_code_buf,    /* 文本内容 */
                 70, 51,                             /* 起始坐标 (x, y) */
@@ -3447,9 +3533,12 @@ void find_account_verification() {
                 0                                   /* 文本框高度 */
             );
 
+            /* 打开触摸屏文件 */
             struct input_event input_buf;
             while (1) {
-                int input_changed = 0;  /* 标记输入是否有变化 */ 
+                /* 标记输入是否有变化 */ 
+                int input_changed = 0; 
+
                 /* 读取触摸屏数据 */ 
                 read(input_fd, &input_buf, sizeof(input_buf));
                 if (input_buf.type == EV_ABS && input_buf.code == ABS_X) {
@@ -3463,12 +3552,13 @@ void find_account_verification() {
                         (input_x >= 876 && input_x <= 1024 && input_y >= 400 && input_y <= 600)) { 
                         /* 处理确认按钮点击事件 */ 
 
+                        /* 处理验证码输入 */
                         /* 若验证码为空 */
                         if (strlen(user_info.verification_code_buf) == 0) {
                             /* 验证码长度不为6 */
                             lcd_render_text_with_box(
-                                "验证码为空，请重新获取验证码！",     /* 文本内容 */
-                                310, 400,                       /* 起始坐标 (x, y) */
+                                "验证码为空，请重新获取验证码！",  /* 文本内容 */
+                                290, 400,                       /* 起始坐标 (x, y) */
                                 COLOR_WHITE,                    /* 文本颜色 */
                                 COLOR_LIGHTGRAY,                /* 文本框背景颜色 */
                                 10,                             /* 文本与文本框边缘的间距 */
@@ -3482,7 +3572,6 @@ void find_account_verification() {
                             find_account_allow_flags = 0;
                             memset(user_info.verification_code_buf, 0, sizeof(user_info.verification_code_buf));
                             memset(code, 0, sizeof(code));
-
                             show_bmp_to_lcd("get_verification_code.bmp", 0, 0, 1024, 600);
                             /* 验证码背景文本框 */
                             lcd_draw_filled_rectangle(
@@ -3498,12 +3587,11 @@ void find_account_verification() {
                             );
                             stop_code_thread();
                             find_account_verification();
-                            printf("find_allow = %d\n", find_account_allow_flags);  //debug
                             return;       
                         } else if (strlen(user_info.verification_code_buf) == 6) {
                             /* 验证码的长度是6 */
                             show_bmp_to_lcd("get_verification_code.bmp", 0, 0, 1024, 600);    
-                            /* 验证码输入文本框 */ 
+                            /* 渲染验证码背景文本框 */ 
                             lcd_render_text_with_box(
                                 user_info.verification_code_buf,     /* 文本内容 */
                                 104, 248,                            /* 起始坐标 (x, y) */
@@ -3521,14 +3609,13 @@ void find_account_verification() {
                                 find_account_allow_flags = 1;
                                 /* 强制初始化线程，避免后面在调用时引发段错误 */
                                 stop_code_thread();
-                                printf("find_allow = %d\n", find_account_allow_flags);  //debug
                                 find_account_judgment_2();
                                 return;
                             }
                         } else {
                             /* 验证码长度不为6 */
                             lcd_render_text_with_box(
-                                "验证码有误，请重新输入",     /* 文本内容 */
+                                "验证码长度不为6，请重新输入",     /* 文本内容 */
                                 310, 400,                       /* 起始坐标 (x, y) */
                                 COLOR_WHITE,                    /* 文本颜色 */
                                 COLOR_LIGHTGRAY,                /* 文本框背景颜色 */
@@ -3543,9 +3630,8 @@ void find_account_verification() {
                             find_account_allow_flags = 0;
                             memset(user_info.verification_code_buf, 0, sizeof(user_info.verification_code_buf));
                             memset(code, 0, sizeof(code));
-
                             show_bmp_to_lcd("get_verification_code.bmp", 0, 0, 1024, 600);
-                            /* 验证码背景文本框 */
+                            /* 渲染验证码背景文本框 */
                             lcd_draw_filled_rectangle(
                                 104, 248, 
                                 386, 50, 
@@ -3568,115 +3654,115 @@ void find_account_verification() {
                     }
 
                     /* 处理键盘点击事件 */ 
-                    if (input_x >= 224 && input_x <= 810 && input_y >= 503 && input_y <= 600) { //空格键
+                    if (input_x >= 224 && input_x <= 810 && input_y >= 503 && input_y <= 600) {
                         strcat(user_info.verification_code_buf, " ");
-                        input_changed = 1;  /* 标记输入有变化 */ 
+                        input_changed = 1;  
                     }
-                    if (input_x >= 0 && input_x <= 100 && input_y >= 198 && input_y <= 254) { //Q键
+                    if (input_x >= 0 && input_x <= 100 && input_y >= 198 && input_y <= 254) {
                         strcat(user_info.verification_code_buf, "Q");
                         input_changed = 1;  
                     }
-                    if (input_x >= 144 && input_x <= 210 && input_y >= 198 && input_y <= 254) { //W键
+                    if (input_x >= 144 && input_x <= 210 && input_y >= 198 && input_y <= 254) {
                         strcat(user_info.verification_code_buf, "W");
                         input_changed = 1;  
                     }
-                    if (input_x >= 247 && input_x <= 301 && input_y >= 198 && input_y <= 254) { //E键
+                    if (input_x >= 247 && input_x <= 301 && input_y >= 198 && input_y <= 254) {
                         strcat(user_info.verification_code_buf, "E");
                         input_changed = 1;  
                     }
-                    if (input_x >= 331 && input_x <= 400 && input_y >= 198 && input_y <= 254) { //R键
+                    if (input_x >= 331 && input_x <= 400 && input_y >= 198 && input_y <= 254) {
                         strcat(user_info.verification_code_buf, "R");
                         input_changed = 1;  
                     }
-                    if (input_x >= 436 && input_x <= 495 && input_y >= 198 && input_y <= 254) { //T键
+                    if (input_x >= 436 && input_x <= 495 && input_y >= 198 && input_y <= 254) {
                         strcat(user_info.verification_code_buf, "T");
                         input_changed = 1;  
                     }
-                    if (input_x >= 544 && input_x <= 600 && input_y >= 198 && input_y <= 254) { //Y键
+                    if (input_x >= 544 && input_x <= 600 && input_y >= 198 && input_y <= 254) {
                         strcat(user_info.verification_code_buf, "Y");
                         input_changed = 1;  
                     }
-                    if (input_x >= 640 && input_x <= 694 && input_y >= 198 && input_y <= 254) { //U键
+                    if (input_x >= 640 && input_x <= 694 && input_y >= 198 && input_y <= 254) {
                         strcat(user_info.verification_code_buf, "U");
                         input_changed = 1;  
                     }
-                    if (input_x >= 740 && input_x <= 797 && input_y >= 198 && input_y <= 254) { //I键
+                    if (input_x >= 740 && input_x <= 797 && input_y >= 198 && input_y <= 254) {
                         strcat(user_info.verification_code_buf, "I");
                         input_changed = 1;  
                     }
-                    if (input_x >= 834 && input_x <= 900 && input_y >= 198 && input_y <= 254) { //O键
+                    if (input_x >= 834 && input_x <= 900 && input_y >= 198 && input_y <= 254) {
                         strcat(user_info.verification_code_buf, "O");
                         input_changed = 1;  
                     }
-                    if (input_x >= 927 && input_x <= 1024 && input_y >= 198 && input_y <= 254) { //P键
+                    if (input_x >= 927 && input_x <= 1024 && input_y >= 198 && input_y <= 254) {
                         strcat(user_info.verification_code_buf, "P");
                         input_changed = 1;  
                     }
-                    if (input_x >= 104 && input_x <= 150 && input_y >= 297 && input_y <= 353) { //A键
+                    if (input_x >= 104 && input_x <= 150 && input_y >= 297 && input_y <= 353) {
                         strcat(user_info.verification_code_buf, "A");
                         input_changed = 1;  
                     }
-                    if (input_x >= 194 && input_x <= 264 && input_y >= 297 && input_y <= 353) { //S键
+                    if (input_x >= 194 && input_x <= 264 && input_y >= 297 && input_y <= 353) {
                         strcat(user_info.verification_code_buf, "S");
                         input_changed = 1;  
                     }
-                    if (input_x >= 291 && input_x <= 350 && input_y >= 297 && input_y <= 353) { //D键
+                    if (input_x >= 291 && input_x <= 350 && input_y >= 297 && input_y <= 353) {
                         strcat(user_info.verification_code_buf, "D");
                         input_changed = 1;  
                     }
-                    if (input_x >= 385 && input_x <= 447 && input_y >= 297 && input_y <= 353) { //F键
+                    if (input_x >= 385 && input_x <= 447 && input_y >= 297 && input_y <= 353) {
                         strcat(user_info.verification_code_buf, "F");
                         input_changed = 1;  
                     }
-                    if (input_x >= 489 && input_x <= 544 && input_y >= 297 && input_y <= 353) { //G键
+                    if (input_x >= 489 && input_x <= 544 && input_y >= 297 && input_y <= 353) {
                         strcat(user_info.verification_code_buf, "G");
                         input_changed = 1;  
                     }
-                    if (input_x >= 589 && input_x <= 647 && input_y >= 297 && input_y <= 353) { //H键
+                    if (input_x >= 589 && input_x <= 647 && input_y >= 297 && input_y <= 353) {
                         strcat(user_info.verification_code_buf, "H");
                         input_changed = 1;  
                     }
-                    if (input_x >= 697 && input_x <= 742 && input_y >= 297 && input_y <= 353) { //J键
+                    if (input_x >= 697 && input_x <= 742 && input_y >= 297 && input_y <= 353) {
                         strcat(user_info.verification_code_buf, "J");
                         input_changed = 1;  
                     }
-                    if (input_x >= 789 && input_x <= 847 && input_y >= 297 && input_y <= 353) { //K键
+                    if (input_x >= 789 && input_x <= 847 && input_y >= 297 && input_y <= 353) {
                         strcat(user_info.verification_code_buf, "K");
                         input_changed = 1;  
                     }
-                    if (input_x >= 894 && input_x <= 938 && input_y >= 297 && input_y <= 353) { //L键
+                    if (input_x >= 894 && input_x <= 938 && input_y >= 297 && input_y <= 353) {
                         strcat(user_info.verification_code_buf, "L");
                         input_changed = 1;  
                     }
-                    if (input_x >= 155 && input_x <= 205 && input_y >= 400 && input_y <= 458) { //Z键
+                    if (input_x >= 155 && input_x <= 205 && input_y >= 400 && input_y <= 458) {
                         strcat(user_info.verification_code_buf, "Z");
                         input_changed = 1;  
                     }
-                    if (input_x >= 249 && input_x <= 297 && input_y >= 400 && input_y <= 458) { //X键
+                    if (input_x >= 249 && input_x <= 297 && input_y >= 400 && input_y <= 458) {
                         strcat(user_info.verification_code_buf, "X");
                         input_changed = 1;  
                     }
-                    if (input_x >= 342 && input_x <= 400 && input_y >= 400 && input_y <= 458) { //C键
+                    if (input_x >= 342 && input_x <= 400 && input_y >= 400 && input_y <= 458) {
                         strcat(user_info.verification_code_buf, "C");
                         input_changed = 1;  
                     }
-                    if (input_x >= 445 && input_x <= 495 && input_y >= 400 && input_y <= 458) { //V键
+                    if (input_x >= 445 && input_x <= 495 && input_y >= 400 && input_y <= 458) {
                         strcat(user_info.verification_code_buf, "V");
                         input_changed = 1;  
                     }
-                    if (input_x >= 541 && input_x <= 589 && input_y >= 400 && input_y <= 458) { //B键
+                    if (input_x >= 541 && input_x <= 589 && input_y >= 400 && input_y <= 458) {
                         strcat(user_info.verification_code_buf, "B");
                         input_changed = 1;  
                     }
-                    if (input_x >= 641 && input_x <= 692 && input_y >= 400 && input_y <= 458) { //N键
+                    if (input_x >= 641 && input_x <= 692 && input_y >= 400 && input_y <= 458) {
                         strcat(user_info.verification_code_buf, "N");
                         input_changed = 1;  
                     }
-                    if (input_x >= 739 && input_x <= 800 && input_y >= 400 && input_y <= 458) { //M键
+                    if (input_x >= 739 && input_x <= 800 && input_y >= 400 && input_y <= 458) {
                         strcat(user_info.verification_code_buf, "M");
                         input_changed = 1;  
                     }
-                    if (input_x >= 0 && input_x <= 120 && input_y >= 393 && input_y <= 600) { //删除键
+                    if (input_x >= 0 && input_x <= 120 && input_y >= 393 && input_y <= 600) {
                         if (strlen(user_info.verification_code_buf) > 0) {
                             user_info.verification_code_buf[strlen(user_info.verification_code_buf) - 1] = '\0';
                         }
@@ -3727,9 +3813,14 @@ void find_account_verification() {
 
 /* 桌面功能实现 */
 void home_fun() {
-    login_allow_flags = 0;  // 重置标志位
+    /* 重置标志位 */ 
+    login_allow_flags = 0;  
     skip_login_boot_flags = 0;
     register_allow_flags = 0;
+    skip_register_boot_flags = 0;
+    find_account_allow_flags = 0;
+    skip_find_account_boot_flags = 0;
+
     /* 显示桌面 */  
     show_bmp_to_lcd("home.bmp", 0, 0, 1024, 600);
     while(1) {
@@ -3739,7 +3830,7 @@ void home_fun() {
             usleep(1000000);
             show_bmp_to_lcd("anti_addiction.bmp", 0, 0, 1024, 600);
             usleep(1000000);
-            show_bmp_to_lcd("login_1.bmp", 0, 0, 1024, 600);
+            show_bmp_to_lcd("login_entry.bmp", 0, 0, 1024, 600);
             break;
         } else {
             not_open_game_notification();
@@ -3769,7 +3860,8 @@ void login_fun() {
                     home_fun();
                     break;
                 } else if (input_x >= 534 && input_x <= 714 && input_y >= 363 && input_y <= 447) {
-                    show_bmp_to_lcd("login_1.bmp", 0, 0, 1024, 600); //  刷新屏幕
+                    /* 刷新屏幕 */  
+                    show_bmp_to_lcd("login_entry.bmp", 0, 0, 1024, 600); 
                     login_fun();
                     return; /* 强制退出函数，防死循环 */
                 }
@@ -3782,31 +3874,35 @@ void login_fun() {
 void login_boot() 
 {
     /* 进入到登录界面 */
-    show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);
+    show_bmp_to_lcd("login_initialization.bmp", 0, 0, 1024, 600);
     account_password_background_box();
 
-    // 标志变量，0 表示隐藏密码，1 表示显示密码，默认隐藏
+    /* 标志变量，0 表示隐藏密码，1 表示显示密码，默认隐藏 */ 
     int show_hide_password_flags = 0; 
     show_bmp_to_lcd("hide_password.bmp", 448, 315, 40, 40);
 
     while (1) {
         ts_fun();
-        printf("bug\n");    //debug
         if (input_x >= 104 && input_x <= 290 && input_y >= 248 && input_y <= 300) {
-            input_account_box();    /* 点击到输入账号文本框 */ 
+            /* 点击到输入账号文本框 */ 
+            input_account_box();    
             return;
         } else if (input_x >= 104 && input_x <= 290 && input_y >= 310 && input_y <= 400) {
-            input_password_box();   /* 点击到输入密码文本框 */
+            /* 点击到输入密码文本框 */
+            input_password_box();   
             return;
         } else if (input_x >= 104 && input_x <= 248 && input_y >= 400 && input_y <= 500) {
-            login_judgment();       /* 首次空账号密码登录，跳转登陆判断 */
+            /* 首次空账号密码登录，跳转登陆判断 */
+            login_judgment();       
             return;
         } else if (input_x >= 250 && input_x <= 361 && input_y >= 424 && input_y <= 484) {
-            register_background_box();  /* 点击到注册账号按钮 */
+            /* 点击到注册账号按钮 */
+            register_background_box();  
             register_boot();
             return;
         } else if (input_x >= 370 && input_x <= 445 && input_y >= 375 && input_y <= 404) {
-            find_account_background_box();  /* 点击忘记密码 */
+            /* 点击忘记密码 */
+            find_account_background_box();  
             find_account_boot();
             return;
         } else if (input_x >= 450 && input_x <= 495 && input_y >= 322 && input_y <= 360) {
@@ -3818,6 +3914,7 @@ void login_boot()
             }
         }
 
+        /* 强制结束登陆界面引导 */
         if (skip_login_boot_flags == 1) {
             return;
         }
@@ -3828,31 +3925,33 @@ void login_boot()
 void register_boot() 
 {   
     /* 进入到注册界面 */
-    show_bmp_to_lcd("login_2.bmp", 0, 0, 1024, 600);
+    show_bmp_to_lcd("login_initialization.bmp", 0, 0, 1024, 600);
     register_background_box();
 
     /* 初始化字库 */
     if (lcd_init("/dev/fb0", "simkai.ttf") != 0) {
-        printf("初始化失败。\n");
+        printf("Font library initialization failed.\n");
         return;
     }
 
-    // 标志变量，0 表示隐藏密码，1 表示显示密码，默认隐藏
+    /* 标志变量，0 表示隐藏密码，1 表示显示密码，默认隐藏 */ 
     int show_hide_password_flags = 0; 
     show_bmp_to_lcd("hide_password.bmp", 448, 315, 40, 40);
 
     while (1) {
         ts_fun();
         if (input_x >= 104 && input_x <= 290 && input_y >= 248 && input_y <= 300) {
-            register_account_box();    /* 点击到输入账号文本框 */ 
+            /* 点击到输入账号文本框 */ 
+            register_account_box();    
             return;
         } else if (input_x >= 104 && input_x <= 290 && input_y >= 310 && input_y <= 400) {
-            register_password_box();   /* 点击到输入密码文本框 */
+            /* 点击到输入密码文本框 */
+            register_password_box();   
             return;
         } else if (input_x >= 104 && input_x <= 248 && input_y >= 400 && input_y <= 500) {
             lcd_render_text_with_box(
-                "当前在注册页面，禁止登录！",          /* 文本内容 */
-                350, 400,                       /* 起始坐标 (x, y) */
+                "当前在注册页面，禁止登录！",      /* 文本内容 */
+                340, 400,                       /* 起始坐标 (x, y) */
                 COLOR_WHITE,                    /* 文本颜色 */
                 COLOR_LIGHTGRAY,                /* 文本框背景颜色 */
                 10,                             /* 文本与文本框边缘的间距 */
@@ -3880,6 +3979,7 @@ void register_boot()
             }
         } 
 
+        /* 强制结束注册界面引导 */
         if (skip_register_boot_flags == 1) {
             return;
         }
@@ -3892,12 +3992,13 @@ void register_boot()
 /* 账号找回引导 */
 void find_account_boot()
 {
+    /* 界面渲染 */
     show_bmp_to_lcd("find_account.bmp", 0, 0, 1024, 600);
     find_account_background_box();
 
     /* 初始化字库 */
     if (lcd_init("/dev/fb0", "simkai.ttf") != 0) {
-        printf("初始化失败。\n");
+        printf("Font library initialization failed.\n");
         return;
     }
 
@@ -3908,13 +4009,16 @@ void find_account_boot()
     while (1) {
         ts_fun();
         if (input_x >= 104 && input_x <= 290 && input_y >= 248 && input_y <= 300) {
-            find_account_account_box();    /* 点击到输入账号文本框 */ 
+            /* 点击到输入账号文本框 */
+            find_account_account_box();     
             return;
         } else if (input_x >= 104 && input_x <= 290 && input_y >= 310 && input_y <= 380) {
-            find_account_password_box();   /* 点击到输入密码文本框 */
+            /* 点击到输入密码文本框 */
+            find_account_password_box();   
             return;
         } else if (input_x >= 100 && input_x <= 218 && input_y >= 424 && input_y <= 500) {
-            find_account_judgment_1();     /* 点击到下一步 */
+            /* 点击到下一步 */
+            find_account_judgment_1();     
             return;
         } else if (input_x >= 450 && input_x <= 495 && input_y >= 322 && input_y <= 360) {
             show_hide_password_flags = !show_hide_password_flags; 
@@ -3925,6 +4029,7 @@ void find_account_boot()
             }
         } 
 
+        /* 强制结束账号找回引导 */
         if (skip_find_account_boot_flags == 1) {
             return;
         }
@@ -3938,7 +4043,7 @@ void find_account_boot()
 void login_judgment() {
     /* 初始化字库 */ 
     if (lcd_init("/dev/fb0", "simkai.ttf") != 0) {
-        printf("初始化失败。\n");
+        printf("Font library initialization failed.\n");
         return;
     }
 
@@ -3959,8 +4064,8 @@ void login_judgment() {
     if (user_data_fd == -1) {
         /* 账号不存在处理 */
         lcd_render_text_with_box(
-            "该账号不存在，请重新输入", 
-            310, 400, 
+            "该账号不存在，请重新输入!", 
+            340, 400, 
             COLOR_WHITE, 
             COLOR_LIGHTGRAY, 
             10, 
@@ -4102,7 +4207,7 @@ void login_judgment() {
         /* 屏幕提示 */
         lcd_render_text_with_box(
             "账户已锁定，请找回密码！",     
-            310, 400,                       
+            340, 400,                       
             COLOR_WHITE,                    
             COLOR_LIGHTGRAY,                
             10,                             
@@ -4144,7 +4249,7 @@ void login_judgment() {
 
         lcd_render_text_with_box(
             "登陆成功，请尽兴游玩~",     
-            310, 400,                       
+            340, 400,                       
             COLOR_WHITE,                    
             COLOR_LIGHTGRAY,                
             10,                             
@@ -4184,7 +4289,7 @@ void login_judgment() {
             strcpy(login_user_info.account_status, "unlock");
             lcd_render_text_with_box(
                 "密码错误，请重新输入！",     
-                310, 400,                       
+                340, 400,                       
                 COLOR_WHITE,                    
                 COLOR_LIGHTGRAY,                
                 10,                             
@@ -4221,7 +4326,7 @@ void login_judgment() {
 void register_judgment() {
     /* 初始化字库 */ 
     if (lcd_init("/dev/fb0", "simkai.ttf") != 0) {
-        printf("初始化失败。\n");
+        printf("Font library initialization failed.\n");
         return;
     }
     /* 满足所有注册条件时 */
@@ -4246,7 +4351,7 @@ void register_judgment() {
             printf("该账号已存在，请重新注册\n");
             lcd_render_text_with_box(
                 "该账号已存在，请重新注册",         /* 文本内容 */
-                350, 400,                       /* 起始坐标 (x, y) */
+                340, 400,                       /* 起始坐标 (x, y) */
                 COLOR_WHITE,                    /* 文本颜色 */
                 COLOR_LIGHTGRAY,                /* 文本框背景颜色 */
                 10,                             /* 文本与文本框边缘的间距 */
@@ -4283,7 +4388,7 @@ void register_judgment() {
 
         lcd_render_text_with_box(
             "注册成功，返回登录界面",         /* 文本内容 */
-            350, 400,                       /* 起始坐标 (x, y) */
+            340, 400,                       /* 起始坐标 (x, y) */
             COLOR_WHITE,                    /* 文本颜色 */
             COLOR_LIGHTGRAY,                /* 文本框背景颜色 */
             10,                             /* 文本与文本框边缘的间距 */
@@ -4304,11 +4409,13 @@ void register_judgment() {
         close(user_data_fd);
         login_boot();
         return;
-    } else if (register_allow_flags == 0) {
+    } else if (register_allow_flags == 0 || 
+               strlen(user_info.account_number_buf) == 0 ||
+               strlen(user_info.password_number_buf) == 0) {
         /* 账号或密码为空时 */
         lcd_render_text_with_box(
             "账号或密码为空，请重新注册",     /* 文本内容 */
-            350, 400,                       /* 起始坐标 (x, y) */
+            340, 400,                       /* 起始坐标 (x, y) */
             COLOR_WHITE,                    /* 文本颜色 */
             COLOR_LIGHTGRAY,                /* 文本框背景颜色 */
             10,                             /* 文本与文本框边缘的间距 */
@@ -4343,10 +4450,12 @@ void register_judgment() {
 /* 找回判断1 */
 void find_account_judgment_1()
 {
+    /* 界面渲染 */
     show_bmp_to_lcd("find_account.bmp", 0, 0, 1024, 600);
+    
     /* 初始化字库 */
     if (lcd_init("/dev/fb0", "simkai.ttf") != 0) {
-        printf("初始化失败。\n");
+        printf("Font library initialization failed.\n");
         return;
     }
 
@@ -4358,39 +4467,37 @@ void find_account_judgment_1()
         /* 尝试打开文档（账号），若账号不存在，返回值-1 */
         int user_data_fd = open(temp_account_number_buf, O_RDONLY);
         if (user_data_fd == -1) {
-            /* 渲染账号与密码文本框 */
-            /* 账号输入文本框 */ 
+            /* 渲染账号与密码背景文本框 */
             lcd_render_text_with_box(
-                user_info.account_number_buf,      /* 文本内容 */
-                104, 248,                /* 起始坐标 (x, y) */
-                COLOR_BLACK,             /* 文本颜色 */ 
-                COLOR_WHITE,             /* 文本框背景颜色 */ 
-                0,                       /* 文本与文本框边缘的间距 */ 
-                BOX_STYLE_RECTANGLE,     /* 矩形样式 */ 
-                0,                       /* 矩形样式不需要半径 */
-                50,                      /* 字体大小 */
-                386,                     /* 文本框宽度 */
-                50                       /* 文本框高度 */
+                user_info.account_number_buf,   /* 文本内容 */
+                104, 248,                       /* 起始坐标 (x, y) */
+                COLOR_BLACK,                    /* 文本颜色 */ 
+                COLOR_WHITE,                    /* 文本框背景颜色 */ 
+                0,                              /* 文本与文本框边缘的间距 */ 
+                BOX_STYLE_RECTANGLE,            /* 矩形样式 */ 
+                0,                              /* 矩形样式不需要半径 */
+                50,                             /* 字体大小 */
+                386,                            /* 文本框宽度 */
+                50                              /* 文本框高度 */
             );
-            /* 密码输入文本框 */
             lcd_render_text_with_box(
-                user_info.hide_password_number_buf,      /* 文本内容 */
-                104, 310,                /* 起始坐标 (x, y) */
-                COLOR_BLACK,             /* 文本颜色 */  
-                COLOR_WHITE,             /* 文本框背景颜色 */
-                0,                       /* 文本与文本框边缘的间距 */
-                BOX_STYLE_RECTANGLE,     /* 矩形样式 */
-                0,                       /* 矩形样式不需要半径 */
-                50,                      /* 字体大小 */
-                386,                       /* 文本框宽度 */
-                50                        /* 文本框高度 */
+                user_info.hide_password_number_buf,     /* 文本内容 */
+                104, 310,                               /* 起始坐标 (x, y) */
+                COLOR_BLACK,                            /* 文本颜色 */  
+                COLOR_WHITE,                            /* 文本框背景颜色 */
+                0,                                      /* 文本与文本框边缘的间距 */
+                BOX_STYLE_RECTANGLE,                    /* 矩形样式 */
+                0,                                      /* 矩形样式不需要半径 */
+                50,                                     /* 字体大小 */
+                386,                                    /* 文本框宽度 */
+                50                                      /* 文本框高度 */
             );
             show_bmp_to_lcd("hide_password.bmp", 448, 315, 40, 40);
 
             /* 账号不存在处理 */
             lcd_render_text_with_box(
                 "该账号不存在，请先进行注册！", 
-                310, 400, 
+                340, 400, 
                 COLOR_WHITE, 
                 COLOR_LIGHTGRAY, 
                 10,
@@ -4414,29 +4521,29 @@ void find_account_judgment_1()
         /* 渲染账号与密码文本框 */
         /* 账号输入文本框 */ 
         lcd_render_text_with_box(
-            user_info.account_number_buf,      /* 文本内容 */
-            104, 248,                /* 起始坐标 (x, y) */
-            COLOR_BLACK,             /* 文本颜色 */ 
-            COLOR_WHITE,             /* 文本框背景颜色 */ 
-            0,                       /* 文本与文本框边缘的间距 */ 
-            BOX_STYLE_RECTANGLE,     /* 矩形样式 */ 
-            0,                       /* 矩形样式不需要半径 */
-            50,                      /* 字体大小 */
-            386,                     /* 文本框宽度 */
-            50                       /* 文本框高度 */
+            user_info.account_number_buf,   /* 文本内容 */
+            104, 248,                       /* 起始坐标 (x, y) */
+            COLOR_BLACK,                    /* 文本颜色 */ 
+            COLOR_WHITE,                    /* 文本框背景颜色 */ 
+            0,                              /* 文本与文本框边缘的间距 */ 
+            BOX_STYLE_RECTANGLE,            /* 矩形样式 */ 
+            0,                              /* 矩形样式不需要半径 */
+            50,                             /* 字体大小 */
+            386,                            /* 文本框宽度 */
+            50                              /* 文本框高度 */
         );
         /* 密码输入文本框 */
         lcd_render_text_with_box(
-            user_info.hide_password_number_buf,      /* 文本内容 */
-            104, 310,                /* 起始坐标 (x, y) */
-            COLOR_BLACK,             /* 文本颜色 */  
-            COLOR_WHITE,             /* 文本框背景颜色 */
-            0,                       /* 文本与文本框边缘的间距 */
-            BOX_STYLE_RECTANGLE,     /* 矩形样式 */
-            0,                       /* 矩形样式不需要半径 */
-            50,                      /* 字体大小 */
-            386,                       /* 文本框宽度 */
-            50                        /* 文本框高度 */
+            user_info.hide_password_number_buf, /* 文本内容 */
+            104, 310,                           /* 起始坐标 (x, y) */
+            COLOR_BLACK,                        /* 文本颜色 */  
+            COLOR_WHITE,                        /* 文本框背景颜色 */
+            0,                                  /* 文本与文本框边缘的间距 */
+            BOX_STYLE_RECTANGLE,                /* 矩形样式 */
+            0,                                  /* 矩形样式不需要半径 */
+            50,                                 /* 字体大小 */
+            386,                                /* 文本框宽度 */
+            50                                  /* 文本框高度 */
         );
         show_bmp_to_lcd("hide_password.bmp", 448, 315, 40, 40);
         lcd_render_text_with_box(
@@ -4464,7 +4571,7 @@ void find_account_judgment_2()
 {
     /* 初始化字库 */
     if (lcd_init("/dev/fb0", "simkai.ttf") != 0) {
-        printf("初始化失败。\n");
+        printf("Font library initialization failed.\n");
         return;
     }
 
@@ -4475,8 +4582,8 @@ void find_account_judgment_2()
     if (find_account_allow_flags == 0) {
         /* 不允许找回 */
         lcd_render_text_with_box(
-            "当前禁止用户找回，请重试！",             /* 文本内容 */
-            350, 400,                       /* 起始坐标 (x, y) */
+            "当前禁止用户找回，请重试！",      /* 文本内容 */
+            340, 400,                       /* 起始坐标 (x, y) */
             COLOR_WHITE,                    /* 文本颜色 */
             COLOR_LIGHTGRAY,                /* 文本框背景颜色 */
             10,                             /* 文本与文本框边缘的间距 */
@@ -4514,9 +4621,9 @@ void find_account_judgment_2()
                     user_info.password_number_buf);
             write(user_data_fd, user_data_buf, strlen(user_data_buf));
 
-                lcd_render_text_with_box(
-                "修改密码成功，请重新登录",       /* 文本内容 */
-                350, 400,                       /* 起始坐标 (x, y) */
+            lcd_render_text_with_box(
+                "修改密码成功，请重新登录！",      /* 文本内容 */
+                340, 400,                       /* 起始坐标 (x, y) */
                 COLOR_WHITE,                    /* 文本颜色 */
                 COLOR_LIGHTGRAY,                /* 文本框背景颜色 */
                 10,                             /* 文本与文本框边缘的间距 */
@@ -4541,16 +4648,16 @@ void find_account_judgment_2()
     } else {
         /* 验证码为空时 */
         lcd_render_text_with_box(
-            "验证码为空验证码错误，请重新获取验证码",             /* 文本内容 */
-            350, 400,                       /* 起始坐标 (x, y) */
-            COLOR_WHITE,                    /* 文本颜色 */
-            COLOR_LIGHTGRAY,                /* 文本框背景颜色 */
-            10,                             /* 文本与文本框边缘的间距 */
-            BOX_STYLE_ROUNDED,              /* 圆角矩形样式 */
-            15,                             /* 圆角矩形半径 */
-            30,                             /* 字体大小 */
-            0,                              /* 文本框宽度 */
-            0                               /* 文本框高度 */
+            "验证码为空或验证码错误，请重新获取验证码！",   /* 文本内容 */
+            220, 400,                                   /* 起始坐标 (x, y) */
+            COLOR_WHITE,                                /* 文本颜色 */
+            COLOR_LIGHTGRAY,                            /* 文本框背景颜色 */
+            10,                                         /* 文本与文本框边缘的间距 */
+            BOX_STYLE_ROUNDED,                          /* 圆角矩形样式 */
+            15,                                         /* 圆角矩形半径 */
+            30,                                         /* 字体大小 */
+            0,                                          /* 文本框宽度 */
+            0                                           /* 文本框高度 */
         );
         sleep(3);
         memset(user_info.verification_code_buf, 0, sizeof(user_info.verification_code_buf));
