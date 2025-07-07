@@ -1,8 +1,8 @@
 /*************************************************************************************************************
 File name: p.c
 Author: KD
-Version: V_4.2
-Build date: 2024-07-05
+Version: V_4.3
+Build date: 2024-07-07
 Description: NONE
 Others: Usage requires preservation of original author attribution.
 Log: 1.优化账号注册界面位数的注册逻辑
@@ -13,7 +13,7 @@ Log: 1.优化账号注册界面位数的注册逻辑
      6.修复验证码获取时图层覆盖的问题
 bug: 
      1.部分函数没有清理lcd资源
-     2.若验证码输入错误，会返回到验证码输入界面，此时若点击获取验证码或创建多个线程，引发段错误(fix?)
+     2.部分屏幕文本提示未对齐
 *************************************************************************************************************/
 
 #include <stdio.h>
@@ -42,22 +42,21 @@ int find_account_allow_flags = 0;       /* 允许找回标志位 1：允许*/
 int code_button_visible = 1;            /* 验证码按钮可见性标记 1：可见状态*/
 int code_button_clicked = 0;            /* 验证码按钮点击状态 0：未在倒计时 */
 int countdown = 0;                      /* 倒计时秒数，初始为0，点击按钮后重置为60 */
-time_t start_time = 0;                  /* 利用系统时间戳计算精确倒计时，避免sleep累积误差 */
-pthread_t code_thread;                  /* 验证码线程ID，用于管理线程生命周期 */
 int thread_running = 0;                 /* 线程运行状态标记，防止重复创建线程（解决验证码重复获取的问题） */
 int skip_find_account_boot_flags = 0;   /* 停止find_account_boot()的死循环 */
-char code[7];               /* 存储生成的随机验证码，留一位给换行符 */
+char code[7];                           /* 存储生成的随机验证码，留一位给换行符 */
+time_t start_time = 0;                  /* 利用系统时间戳计算精确倒计时，避免sleep累积误差 */
+pthread_t code_thread;                  /* 验证码线程ID，用于管理线程生命周期 */
 
-
-// 定义包含账号和密码数组的结构体
+/* 定义包含账号、密码与验证码的数组结构体 */ 
 typedef struct 
 {
-    char account_number_buf[128];       /* 用于存储账号的数组 */
-    char password_number_buf[128];      /* 用于存储密码的数组 */
-    char hide_password_number_buf[128]; /* 用于隐藏密码的数组 */
-    char verification_code_buf[128];    /* 用于存储验证码的数组 */
+    char account_number_buf[128];           /* 用于存储账号的数组 */
+    char password_number_buf[128];          /* 用于存储密码的数组 */
+    char hide_password_number_buf[128];     /* 用于隐藏密码的数组 */
+    char verification_code_buf[128];        /* 用于存储验证码的数组 */
 } UserInfo;
-UserInfo user_info = {{0}, {0}, {0}, {0}}; // 初始化用户信息结构体 
+UserInfo user_info = {{0}, {0}, {0}, {0}};  /* 初始化用户信息结构体 */  
 
 /* 全局向前声明各函数 */ 
 void input_account_box();
@@ -2432,7 +2431,7 @@ void find_account_account_box()
                 /* 空密码时 */
                 if (strlen(user_info.password_number_buf) == 0) {
                     lcd_render_text(
-                        "请输入要找回的密码(8-12位)",            /* 文本内容 */
+                        "请输入要修改的密码(8-12位)",            /* 文本内容 */
                         104, 323,               /* 起始坐标 (x, y) */
                         COLOR_LIGHTGRAY,        /* 文本颜色 */
                         25                      /* 字体大小 */
@@ -2450,7 +2449,7 @@ void find_account_account_box()
                                     COLOR_WHITE     /* 填充颜色 */
                                 );
                                 lcd_render_text(
-                                    "请输入要找回的密码(8-12位)",            /* 文本内容 */
+                                    "请输入要修改的密码(8-12位)",            /* 文本内容 */
                                     104, 323,               /* 起始坐标 (x, y) */
                                     COLOR_LIGHTGRAY,        /* 文本颜色 */
                                     25                      /* 字体大小 */
@@ -2463,7 +2462,7 @@ void find_account_account_box()
                                     COLOR_WHITE     /* 填充颜色 */
                                 );
                                 lcd_render_text(
-                                    "请输入要找回的密码(8-12位)",            /* 文本内容 */
+                                    "请输入要修改的密码(8-12位)",            /* 文本内容 */
                                     104, 323,               /* 起始坐标 (x, y) */
                                     COLOR_LIGHTGRAY,        /* 文本颜色 */
                                     25                      /* 字体大小 */
@@ -2883,7 +2882,7 @@ void find_account_password_box()
                             COLOR_WHITE     /* 填充颜色 */
                         );
                         lcd_render_text(
-                            "请输入要修改的账号",                       /* 文本内容 */
+                            "请输入要找回的账号",                       /* 文本内容 */
                             104, 260,                           /* 起始坐标 (x, y) */
                             COLOR_LIGHTGRAY,                    /* 文本颜色 */
                             25                                  /* 字体大小 */
@@ -3357,23 +3356,16 @@ void *send_verification_code(void *arg) {
     return NULL;
 }
 
-/* 重置验证码按钮显示状态，防止图层覆盖 */ 
-void reset_verification_state() {
-    code_button_visible = 1;
-    code_button_clicked = 0;
-    countdown = 0;
-    update_countdown_display();
-}
-
 /* 找回界面验证码输入功能实现 */
 void find_account_verification() {
-
-    stop_code_thread();
     /* 初始化字库 */
     if (lcd_init("/dev/fb0", "simkai.ttf") != 0) {
         printf("初始化失败。\n");
         return;
     }
+
+    /* 强制初始化线程，避免后面在调用时引发段错误 */
+    stop_code_thread();
 
     /* 加载图层 */
     show_bmp_to_lcd("get_verification_code.bmp", 0, 0, 1024, 600);
@@ -3391,7 +3383,6 @@ void find_account_verification() {
         25                      /* 字体大小 */
     );
 
-
     /* 创建新的验证码发送线程 */ 
     if (pthread_create(&code_thread, NULL, send_verification_code, NULL) != 0) {
         perror("Failed to create code thread.\n");
@@ -3402,8 +3393,10 @@ void find_account_verification() {
         ts_fun();
         if (input_x >= 104 && input_x <= 225 && input_y >= 437 && input_y <= 484) {
             /* 点击到修改密码按钮 */ 
-            find_account_judgment_2();
+            /* 强制初始化线程，避免后面在调用时引发段错误 */
+            stop_code_thread();
             find_account_allow_flags = 1;
+            find_account_judgment_2();
             return;
         }
 
@@ -3488,8 +3481,8 @@ void find_account_verification() {
                             sleep(3);
                             find_account_allow_flags = 0;
                             memset(user_info.verification_code_buf, 0, sizeof(user_info.verification_code_buf));
-                            /* 重置验证码显示，但不重新调用find_account_verification */ 
-                            reset_verification_state();
+                            memset(code, 0, sizeof(code));
+
                             show_bmp_to_lcd("get_verification_code.bmp", 0, 0, 1024, 600);
                             /* 验证码背景文本框 */
                             lcd_draw_filled_rectangle(
@@ -3503,9 +3496,10 @@ void find_account_verification() {
                                 COLOR_LIGHTGRAY, 
                                 25
                             );
-                            code_button_visible = 1;        /* 验证码按钮可见标记 */
-                            update_countdown_display();     /* 更新验证码按钮为可见状态 */
-                            break;  /* 退出键盘输入循环 */           
+                            stop_code_thread();
+                            find_account_verification();
+                            printf("find_allow = %d\n", find_account_allow_flags);  //debug
+                            return;       
                         } else if (strlen(user_info.verification_code_buf) == 6) {
                             /* 验证码的长度是6 */
                             show_bmp_to_lcd("get_verification_code.bmp", 0, 0, 1024, 600);    
@@ -3525,6 +3519,9 @@ void find_account_verification() {
                             /* 点击到修改密码 */
                             if (input_x >= 104 && input_x <= 225 && input_y >= 437 && input_y <= 484) {
                                 find_account_allow_flags = 1;
+                                /* 强制初始化线程，避免后面在调用时引发段错误 */
+                                stop_code_thread();
+                                printf("find_allow = %d\n", find_account_allow_flags);  //debug
                                 find_account_judgment_2();
                                 return;
                             }
@@ -3545,8 +3542,8 @@ void find_account_verification() {
                             sleep(3);
                             find_account_allow_flags = 0;
                             memset(user_info.verification_code_buf, 0, sizeof(user_info.verification_code_buf));
-                            /* 重置验证码显示，但不重新调用find_account_verification */ 
-                            reset_verification_state();
+                            memset(code, 0, sizeof(code));
+
                             show_bmp_to_lcd("get_verification_code.bmp", 0, 0, 1024, 600);
                             /* 验证码背景文本框 */
                             lcd_draw_filled_rectangle(
@@ -3560,9 +3557,9 @@ void find_account_verification() {
                                 COLOR_LIGHTGRAY, 
                                 25
                             );
-                            break;  /* 退出键盘输入循环 */ 
-                            code_button_visible = 1;        /* 验证码按钮可见标记 */
-                            update_countdown_display();     /* 更新验证码按钮为可见状态 */
+                            stop_code_thread();
+                            find_account_verification();
+                            return;
                         }
                         /* 防止输入到正确六位数密码后不显示验证码按钮 */
                         code_button_visible = 1;        /* 验证码按钮可见标记 */
@@ -4407,7 +4404,7 @@ void find_account_judgment_1()
             memset(&user_info, 0, sizeof(user_info));
             memset(temp_account_number_buf, 0, sizeof(temp_account_number_buf));
             find_account_allow_flags = 0;
-            find_account_boot();
+            login_boot();
             return;
         } else {
             find_account_verification();
@@ -4471,7 +4468,8 @@ void find_account_judgment_2()
         return;
     }
 
-    code_button_visible = 0;
+    /* 防止线程残留 */
+    stop_code_thread();
 
     /* 先处理不允许找回的逻辑 */
     if (find_account_allow_flags == 0) {
@@ -4490,7 +4488,9 @@ void find_account_judgment_2()
         );
         sleep(3);
         memset(&user_info, 0, sizeof(user_info));
+        memset(code, 0, sizeof(code));
         find_account_allow_flags = 0;
+        stop_code_thread();
         login_boot();
         return;
     } else if (find_account_allow_flags == 1 && strlen(user_info.verification_code_buf) !=0) {
@@ -4514,7 +4514,19 @@ void find_account_judgment_2()
                     user_info.password_number_buf);
             write(user_data_fd, user_data_buf, strlen(user_data_buf));
 
-            show_bmp_to_lcd("find_account_success.bmp", 0, 0, 1024, 600);
+                lcd_render_text_with_box(
+                "修改密码成功，请重新登录",       /* 文本内容 */
+                350, 400,                       /* 起始坐标 (x, y) */
+                COLOR_WHITE,                    /* 文本颜色 */
+                COLOR_LIGHTGRAY,                /* 文本框背景颜色 */
+                10,                             /* 文本与文本框边缘的间距 */
+                BOX_STYLE_ROUNDED,              /* 圆角矩形样式 */
+                15,                             /* 圆角矩形半径 */
+                30,                             /* 字体大小 */
+                0,                              /* 文本框宽度 */
+                0                               /* 文本框高度 */
+            );
+            //show_bmp_to_lcd("find_account_success.bmp", 0, 0, 1024, 600);
             sleep(3);
             memset(&user_info, 0, sizeof(user_info));
             memset(user_data_buf, 0, sizeof(user_data_buf));
@@ -4522,6 +4534,7 @@ void find_account_judgment_2()
             close(user_data_fd);
             find_account_allow_flags = 0;
             skip_find_account_boot_flags = 1;
+            stop_code_thread();
             login_boot();
             return;
         }
@@ -4544,6 +4557,8 @@ void find_account_judgment_2()
         memset(code, 0, sizeof(code));
         find_account_allow_flags = 0;
         find_account_verification();
+        stop_code_thread();
+        return;
     }
     /* 清理lcd资源 */
     lcd_cleanup();
