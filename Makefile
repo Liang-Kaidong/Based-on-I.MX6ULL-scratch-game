@@ -1,7 +1,7 @@
 CC = arm-linux-gnueabihf-gcc
-CFLAGS = -Wall -O2 -I./LIB/lcd_font -I./SYSTEM/show_bmp_to_lcd -I./HARDWARE/LCD -I. -std=gnu99  # 启用gnu99标准，添加当前目录和HARDWARE/LCD目录到头文件搜索路径
-LDFLAGS = -L./LIB/lcd_font
-LDLIBS = -llcd_font -lm -lpthread
+CFLAGS = -Wall -O2 -I./LIB/lcd_font -I./LIB/show_gif_to_lcd -I./SYSTEM/show_bmp_to_lcd -I./HARDWARE/LCD -I. -std=gnu99
+LDFLAGS = -L./LIB/lcd_font -L./LIB/show_gif_to_lcd  # 添加库搜索路径
+LDLIBS = -llcd_font -lshow_gif_to_lcd -lm -lpthread  # 添加库名
 
 EXEC = p
 OBJS = USER/p.o SYSTEM/show_bmp_to_lcd/show_bmp_to_lcd.o HARDWARE/LCD/touchscreen_input.o
@@ -12,7 +12,7 @@ all: $(EXEC)
 $(EXEC): $(OBJS)
 	$(CC) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-USER/p.o: USER/p.c LIB/lcd_font/lcd_font.h SYSTEM/show_bmp_to_lcd/show_bmp_to_lcd.h HARDWARE/LCD/touchscreen_input.o
+USER/p.o: USER/p.c LIB/lcd_font/lcd_font.h SYSTEM/show_bmp_to_lcd/show_bmp_to_lcd.h HARDWARE/LCD/touchscreen_input.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
 SYSTEM/show_bmp_to_lcd/show_bmp_to_lcd.o: SYSTEM/show_bmp_to_lcd/show_bmp_to_lcd.c SYSTEM/show_bmp_to_lcd/show_bmp_to_lcd.h

@@ -1,8 +1,8 @@
 /*************************************************************************************************************
 File name: p.c
 Author: KD
-Version: V_4.5
-Build date: 2024-07-07
+Version: V_4.6
+Build date: 2025-07-08
 Description: NONE
 Others: Usage requires preservation of original author attribution.
 Log: 1.优化账号注册界面位数的注册逻辑
@@ -12,6 +12,7 @@ Log: 1.优化账号注册界面位数的注册逻辑
      5.新增获取验证码的逻辑
      6.修复验证码获取时图层覆盖的问题
      7.修复有账号时空密码点击确定不渲染文本框的问题
+     8.新增游戏加载动图显示
 bug: you tell me!
 *************************************************************************************************************/
 
@@ -29,6 +30,7 @@ bug: you tell me!
 #include <pthread.h>
 #include <time.h>
 #include "show_bmp_to_lcd.h"
+#include "show_gif_to_lcd.h"
 #include "lcd_font.h"
 
 /* 全局变量定义 */
@@ -4756,7 +4758,8 @@ void find_account_judgment_2()
 /* 游戏引导页面 */
 void game_start_home() {
     login_allow_flags = 0;
-    show_bmp_to_lcd("1.bmp", 0, 0, 1024, 600);
+    show_gif_to_lcd("loading.gif", 0, 0, 1024, 600, 5);
+    show_bmp_to_lcd("game_start.bmp", 0, 0, 1024, 600);
 }
 
 /* 程序主函数 */
