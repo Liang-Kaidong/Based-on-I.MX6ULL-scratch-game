@@ -4758,8 +4758,9 @@ void find_account_judgment_2()
 /* 游戏引导页面 */
 void game_start_home() {
     login_allow_flags = 0;
-    show_gif_to_lcd("loading.gif", 0, 0, 1024, 600, 5);
+    show_gif_to_lcd("loading.gif", 0, 0, 1024, 600, 10);
     show_bmp_to_lcd("game_start.bmp", 0, 0, 1024, 600);
+    return;
 }
 
 /* 程序主函数 */
