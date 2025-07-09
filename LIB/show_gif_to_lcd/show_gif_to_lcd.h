@@ -16,7 +16,7 @@ extern "C" {
  * @param play_time 播放时间（0为循环播放），单位：秒
  * @return 成功播放的帧数（失败返回-1）
  */
-int show_gif_to_lcd(const char *filename, int x, int y, int width, int height, int play_time);
+int show_gif_to_lcd(char *filename, int x, int y, int width, int height, int play_time);
 
 #ifdef __cplusplus
 }
