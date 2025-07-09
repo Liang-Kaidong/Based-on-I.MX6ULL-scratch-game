@@ -1,18 +1,15 @@
 /*************************************************************************************************************
 File name: p.c
 Author: KD
-Version: V_4.6
-Build date: 2025-07-08
-Description: NONE
+Version: V_5.0
+Build date: 2025-07-09
+Description: Final_Version.
 Others: Usage requires preservation of original author attribution.
-Log: 1.优化账号注册界面位数的注册逻辑
-     2.新增账号注册功能
-     3.新增账号冻结功能
-     4.新增验证码一级与二级界面
-     5.新增获取验证码的逻辑
-     6.修复验证码获取时图层覆盖的问题
-     7.修复有账号时空密码点击确定不渲染文本框的问题
-     8.新增游戏加载动图显示
+Log: 1.新增刮刮乐游戏主体的实现
+     2.新增刮刮乐游戏结束时再来一次的选项
+     3.新增刮刮乐游戏结束时返回主界面的功能
+     4.修复已知问题
+     5.提高游戏稳定性
 bug: you tell me!
 *************************************************************************************************************/
 
@@ -35,6 +32,7 @@ bug: you tell me!
 
 /* 全局变量定义 */
 int input_x, input_y;                   /* 触摸点 x 和 y 坐标 */
+int start_x = 0, start_y = 0;           // 全局起始坐标
 int login_allow_flags = 0;              /* 允许登录标记位 1：允许 */
 int skip_login_boot_flags = 0;          /* 停止login_boot()的死循环 */
 int register_allow_flags = 0;           /* 允许注册标记位 1：允许 */
@@ -48,6 +46,14 @@ int skip_find_account_boot_flags = 0;   /* 停止find_account_boot()的死循环
 char code[7];                           /* 存储生成的随机验证码，留一位给换行符 */
 time_t start_time = 0;                  /* 利用系统时间戳计算精确倒计时，避免sleep累积误差 */
 pthread_t code_thread;                  /* 验证码线程ID，用于管理线程生命周期 */
+unsigned short *lcd_buf;                // 屏幕内存映射
+unsigned short *prize_buf;              // 奖项图片缓存
+unsigned char *scratched;               // 记录已刮开的像素
+int scratched_count = 0;                // 已刮开的像素数量
+int threshold_reached = 0;              // 是否达到阈值
+float threshold_ratio = 0.20;           // 触发阈值比例（20%）
+int stop_touch = 0;                     // 新增变量，用于控制触摸事件循环
+
 
 /* 定义包含账号、密码与验证码的数组结构体 */ 
 typedef struct 
@@ -76,6 +82,8 @@ void find_account_boot();
 void find_account_judgment_1();
 void find_account_judgment_2();
 void game_start_home();
+void game_exit();
+int main();
 
 /* 触摸功能实现 */
 void ts_fun()
@@ -88,7 +96,7 @@ void ts_fun()
     }
     
     struct input_event input_buf;
-    while(1) {
+    while (1) {
         /* 读取触摸屏数据: input_buf */
         read(input_fd, &input_buf, sizeof(input_buf));
         /* 判断是否是触摸屏事件 */   
@@ -105,10 +113,10 @@ void ts_fun()
         if (input_buf.type == EV_KEY && 
             input_buf.code == BTN_TOUCH && 
             input_buf.value == 0) {
-                /* 打印坐标值 */
-                printf("x = %d, y = %d\n", input_x, input_y);   
-                break;
-            }
+            /* 打印坐标值 */
+            printf("x = %d, y = %d\n", input_x, input_y);   
+            break;
+        }
     }
 
     /* 关闭文件描述符 */
@@ -3874,6 +3882,17 @@ void find_account_verification() {
     lcd_cleanup();
 }
 
+/* 开机引导界面 */
+void boot()
+{
+    //show_gif_to_lcd("boot.gif", 0, 0, 1024, 600, 3);
+    show_bmp_to_lcd("boot_logo.bmp", 0, 0, 1024, 600);
+    sleep(3);
+    //show_gif_to_lcd("boot_am.gif", 0, 0, 1024, 600, 15);
+    return;
+
+}
+
 /* 桌面功能实现 */
 void home_fun() {
     /* 重置标志位 */ 
@@ -3883,6 +3902,9 @@ void home_fun() {
     skip_register_boot_flags = 0;
     find_account_allow_flags = 0;
     skip_find_account_boot_flags = 0;
+    scratched_count = 0;
+    threshold_reached = 0;
+    stop_touch = 1;
 
     /* 显示桌面 */  
     show_bmp_to_lcd("home.bmp", 0, 0, 1024, 600);
@@ -3890,7 +3912,9 @@ void home_fun() {
         ts_fun();
         if (input_x >= 418 && input_x <= 494 && input_y >= 259 && input_y <= 331) {
             show_bmp_to_lcd("logo.bmp", 0, 0, 1024, 600);
-            usleep(1000000);
+            sleep(1);
+            //show_gif_to_lcd("game_logo.gif", 0, 0, 1024, 600, 25);
+            sleep(1);
             show_bmp_to_lcd("anti_addiction.bmp", 0, 0, 1024, 600);
             usleep(1000000);
             show_bmp_to_lcd("login_entry.bmp", 0, 0, 1024, 600);
@@ -4758,14 +4782,202 @@ void find_account_judgment_2()
 /* 游戏引导页面 */
 void game_start_home() {
     login_allow_flags = 0;
-    show_gif_to_lcd("loading.gif", 0, 0, 1024, 600, 10);
+    //show_gif_to_lcd("loading.gif", 0, 0, 1024, 600, 10);
     show_bmp_to_lcd("game_start.bmp", 0, 0, 1024, 600);
     return;
+}
+
+// 加载奖项图片到缓存
+int load_prize_image(const char *bmp_path) {
+    int bmp_fd = open(bmp_path, O_RDONLY);
+    if (bmp_fd == -1) {
+        printf("打开奖项图片 %s 失败\n", bmp_path);
+        return -1;
+    }
+
+    unsigned char *bmp_data = malloc(1024 * 600 * 3);
+    lseek(bmp_fd, 54, SEEK_SET);
+    read(bmp_fd, bmp_data, 1024 * 600 * 3);
+    close(bmp_fd);
+
+    prize_buf = malloc(1024 * 600 * 2);
+    int x, y;
+    for (y = 0; y < 600; y++) {
+        for (x = 0; x < 1024; x++) {
+            int data_idx = (599 - y) * 1024 * 3 + x * 3;
+            unsigned char b = bmp_data[data_idx];
+            unsigned char g = bmp_data[data_idx + 1];
+            unsigned char r = bmp_data[data_idx + 2];
+            // 直接进行转换逻辑
+            unsigned short red = (r >> 3) << 11;
+            unsigned short green = (g >> 2) << 5;
+            unsigned short blue = b >> 3;
+            prize_buf[y * 1024 + x] = red | green | blue;
+        }
+    }
+
+    free(bmp_data);
+    printf("奖项图片已加载并缩放至全屏\n");
+    return 0;
+}
+
+// 显示完整中奖图片（达到阈值时调用）
+void show_full_prize() {
+    memcpy(lcd_buf, prize_buf, 1024 * 600 * 2);
+    threshold_reached = 1;
+    stop_touch = 1; // 设置停止触摸事件循环的标志
+    printf("已刮开%.1f%%区域，展示完整中奖图片\n", (float)scratched_count / (1024 * 600) * 100);
+}
+
+// 刮奖逻辑（统计刮开面积）
+void scratch_area(int x, int y, int radius) {
+    if (threshold_reached) return;
+
+    int dy, dx;
+    for (dy = -radius; dy <= radius; dy++) {
+        for (dx = -radius; dx <= radius; dx++) {
+            if (dx*dx + dy*dy > radius*radius) continue;
+
+            int real_x = x + dx;
+            int real_y = y + dy;
+
+            if (real_x < 0 || real_x >= 1024) continue;
+            if (real_y < 0 || real_y >= 600) continue;
+
+            if (!scratched[real_x + real_y * 1024]) {
+                scratched[real_x + real_y * 1024] = 1;
+                scratched_count++;
+
+                lcd_buf[real_y * 1024 + real_x] = prize_buf[real_y * 1024 + real_x];
+
+                if (scratched_count % 1000 == 0) {
+                    float progress = (float)scratched_count / (1024 * 600) * 100;
+                    printf("当前刮开进度: %.1f%%\n", progress);
+                }
+
+                if (scratched_count >= (int)(1024 * 600 * threshold_ratio)) {
+                    show_full_prize();
+                    return;
+                }
+            }
+        }
+    }
+}
+
+// 连续触摸函数
+void touch_fun() {
+    int touch_fd = open("/dev/input/event1", O_RDONLY);
+    if (touch_fd == -1) {
+        perror("open error.\n");
+        return;
+    }
+
+    struct input_event input_buf;
+    while (1) { // 当 stop_touch 为 1 时退出循环
+        if (stop_touch == 0) {
+            read(touch_fd, &input_buf, sizeof(input_buf));
+            if (input_buf.type == 3 && input_buf.code == 0) {
+                input_x = input_buf.value;
+            }
+            if (input_buf.type == 3 && input_buf.code == 1) {
+                input_y = input_buf.value;
+            }
+            scratch_area(input_x, input_y, 30);
+            printf("input_x = %d, input_y = %d\n", input_x, input_y);
+        } else {
+            return;
+        }
+    }
+
+    close(touch_fd);
+}
+
+// 游戏开始函数
+void game_start() {
+
+    /* 初始化游戏参数 */
+    scratched_count = 0;
+    threshold_reached = 0;
+    stop_touch = 0;
+
+    // 打开屏幕
+    int lcd_fd = open("/dev/fb0", O_RDWR);
+    if (lcd_fd == -1) {
+        perror("打开屏幕失败");
+        return;
+    }
+
+    // 内存映射屏幕
+    lcd_buf = mmap(NULL, 1024 * 600 * 2, PROT_READ | PROT_WRITE, MAP_SHARED, lcd_fd, 0);
+    if (lcd_buf == MAP_FAILED) {
+        perror("屏幕映射失败");
+        close(lcd_fd);
+        return;
+    }
+
+    // 初始化刮开标记数组
+    scratched = calloc(1024 * 600, sizeof(unsigned char));
+
+    show_bmp_to_lcd("game_start.bmp", 0, 0, 1024, 600);
+
+    // 随机选择奖项（一等奖10%，二等奖20%，三等奖30%，不中奖40%）
+    srand(time(NULL));
+    int prize = rand() % 100;
+    if (prize < 10) {
+        printf("恭喜获得一等奖！\n");
+        load_prize_image("first_prize.bmp");
+    } else if (prize < 30) {
+        printf("恭喜获得二等奖！\n");
+        load_prize_image("second_prize.bmp");
+    } else if (prize < 60) {
+        printf("恭喜获得三等奖！\n");
+        load_prize_image("third_prize.bmp");
+    } else {
+        printf("未中奖，再接再厉！\n");
+        load_prize_image("no_prize.bmp");
+    }
+
+    // 显示提示信息
+    printf("刮开%.1f%%区域即可显示完整结果\n", threshold_ratio * 100);
+
+    touch_fun();
+
+    // 清理资源
+    munmap(lcd_buf, 1024 * 600 * 2);
+    free(prize_buf);
+    free(scratched);
+    close(lcd_fd);
+    game_exit();
+}
+
+void game_exit() {
+    while (1) {
+        ts_fun();
+        if (stop_touch == 1) {
+            if (input_x >= 0 && input_x <= 211 && input_y >= 540 && input_y <= 600) {
+                game_start();
+                return;
+            } else if (input_x >= 0 && input_x <= 211 && input_y >= 477 && input_y <= 530) {
+                show_bmp_to_lcd("game_exit.bmp", 0, 0, 1024, 600);
+                while (2) {
+                    ts_fun();
+                    if (input_x >= 313 && input_x <= 497 && input_y >= 363 && input_y <= 447) {
+                        main();
+                        return;
+                    } else if (input_x >= 534 && input_x <= 714 && input_y >= 363 && input_y <= 447) {
+                        game_start();
+                        return;
+                    }
+                }
+            }
+        }
+    }
 }
 
 /* 程序主函数 */
 int main() 
 {
+    boot();
     home_fun();
     login_fun();
     /*
@@ -4777,5 +4989,6 @@ int main()
     */
     //login_judement();
     game_start_home();
+    game_start();
     return 0;
 }
